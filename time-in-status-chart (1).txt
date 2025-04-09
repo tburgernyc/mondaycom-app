@@ -1,0 +1,148 @@
+import React, { useEffect, useRef } from 'react';
+import './TimeInStatusChart.css';
+
+const TimeInStatusChart = ({ timeInStatus, highlightBottlenecks = false }) => {
+  const chartRef = useRef(null);
+
+  useEffect(() => {
+    if (!timeInStatus || Object.keys(timeInStatus).length === 0) {
+      renderEmptyState();
+      return;
+    }
+
+    renderChart();
+  }, [timeInStatus, highlightBottlenecks]);
+
+  // Render an empty state when no data is available
+  const renderEmptyState = () => {
+    const container = chartRef.current;
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="empty-chart">
+        <p>No time-in-status data available.</p>
+      </div>
+    `;
+  };
+
+  // Render the chart
+  const renderChart = () => {
+    const container = chartRef.current;
+    if (!container) return;
+
+    // Clear previous chart
+    container.innerHTML = '';
+
+    // Convert data to a sortable array
+    const statusData = Object.entries(timeInStatus).map(([status, hours]) => ({
+      status,
+      hours: typeof hours === 'number' ? hours : hours.averageTimeHours || 0
+    }));
+
+    // Sort by time (descending)
+    statusData.sort((a, b) => b.hours - a.hours);
+
+    // Calculate the maximum value for scaling
+    const maxHours = Math.max(...statusData.map(d => d.hours));
+    
+    // Determine if we should use days instead of hours for display
+    const useDays = maxHours >= 24;
+    
+    // Create chart container
+    const chartContainer = document.createElement('div');
+    chartContainer.className = 'time-chart-container';
+    
+    // Add y-axis labels
+    const yAxis = document.createElement('div');
+    yAxis.className = 'y-axis';
+    
+    const yLabel = document.createElement('div');
+    yLabel.className = 'y-label';
+    yLabel.textContent = useDays ? 'Days' : 'Hours';
+    yAxis.appendChild(yLabel);
+    
+    chartContainer.appendChild(yAxis);
+    
+    // Create bars container
+    const barsContainer = document.createElement('div');
+    barsContainer.className = 'bars-container';
+    
+    // Add bars
+    statusData.forEach(data => {
+      const barGroup = document.createElement('div');
+      barGroup.className = 'bar-group';
+      
+      // Create bar
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      
+      // Calculate percentage for bar height
+      const percentage = (data.hours / maxHours) * 100;
+      bar.style.height = `${percentage}%`;
+      
+      // Set color
+      const isBottleneck = highlightBottlenecks && statusData.indexOf(data) < 3;
+      bar.style.backgroundColor = isBottleneck 
+        ? '#ff5252' 
+        : getStatusColor(data.status);
+      
+      if (isBottleneck) {
+        bar.classList.add('bottleneck');
+      }
+      
+      // Add value label
+      const valueLabel = document.createElement('div');
+      valueLabel.className = 'value-label';
+      
+      // Format the value
+      const formattedValue = useDays 
+        ? `${(data.hours / 24).toFixed(1)} days`
+        : `${data.hours.toFixed(1)} hrs`;
+      
+      valueLabel.textContent = formattedValue;
+      
+      // Add status label
+      const statusLabel = document.createElement('div');
+      statusLabel.className = 'status-label';
+      statusLabel.textContent = data.status;
+      
+      // Assemble bar group
+      barGroup.appendChild(valueLabel);
+      barGroup.appendChild(bar);
+      barGroup.appendChild(statusLabel);
+      
+      barsContainer.appendChild(barGroup);
+    });
+    
+    chartContainer.appendChild(barsContainer);
+    
+    // Add to container
+    container.appendChild(chartContainer);
+  };
+
+  // Get color for a status bar
+  const getStatusColor = (status) => {
+    const statusColors = {
+      'Backlog': '#6E6E6E',
+      'To Do': '#579BFC',
+      'In Progress': '#FDAB3D',
+      'Review': '#E2445C',
+      'Done': '#00C875',
+      'Stuck': '#D83A52'
+    };
+    
+    return statusColors[status.toLowerCase()] || 
+           statusColors[status] || 
+           '#7E5EF8';
+  };
+
+  return (
+    <div className="time-in-status-chart">
+      <div ref={chartRef} className="chart-content">
+        {/* Chart will be rendered here */}
+      </div>
+    </div>
+  );
+};
+
+export default TimeInStatusChart;

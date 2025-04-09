@@ -1,0 +1,335 @@
+/**
+ * Natural Language Processing Intent Recognition
+ * 
+ * This file contains functions for understanding user queries and identifying intents and entities.
+ */
+
+/**
+ * Process a user query to identify intent and extract entities
+ * @param {string} query - User's natural language query
+ * @returns {Object} - Identified intent and entities
+ */
+export const processUserQuery = async (query) => {
+  try {
+    // In a production environment, this would call an NLP service like Claude API
+    // For demonstration purposes, using rule-based intent recognition
+    
+    // Convert query to lowercase for case-insensitive matching
+    const lowerQuery = query.toLowerCase();
+    
+    // Define patterns for intent recognition
+    const intentPatterns = [
+      {
+        intent: 'analyze_workflow',
+        patterns: ['analyze', 'analysis', 'bottleneck', 'optimize', 'efficiency', 'workflow'],
+        requiresAnalysis: true,
+        entities: {
+          boardId: extractBoardReference(query)
+        }
+      },
+      {
+        intent: 'show_bottlenecks',
+        patterns: ['bottleneck', 'stuck', 'slow', 'delay', 'wait time'],
+        requiresAnalysis: true,
+        entities: {
+          boardId: extractBoardReference(query)
+        }
+      },
+      {
+        intent: 'show_efficiency',
+        patterns: ['efficiency', 'metrics', 'performance', 'kpi', 'statistics'],
+        requiresAnalysis: true,
+        entities: {
+          boardId: extractBoardReference(query),
+          timeframe: extractTimeframe(query)
+        }
+      },
+      {
+        intent: 'get_recommendations',
+        patterns: ['recommend', 'suggestion', 'improve', 'optimize', 'better'],
+        requiresAnalysis: true,
+        entities: {
+          boardId: extractBoardReference(query),
+          recommendationType: extractRecommendationType(query)
+        }
+      },
+      {
+        intent: 'create_workspace',
+        patterns: ['create', 'new', 'workspace', 'board', 'setup'],
+        requiresAnalysis: false,
+        entities: {
+          workspaceType: extractWorkspaceType(query),
+          description: query // Use the full query as the description
+        }
+      },
+      {
+        intent: 'team_analysis',
+        patterns: ['team', 'workload', 'assignment', 'resources', 'who', 'member'],
+        requiresAnalysis: true,
+        entities: {
+          boardId: extractBoardReference(query),
+          teamMember: extractTeamMember(query)
+        }
+      },
+      {
+        intent: 'visualize_workflow',
+        patterns: ['visualize', 'chart', 'diagram', 'flow', 'graph'],
+        requiresAnalysis: true,
+        entities: {
+          boardId: extractBoardReference(query),
+          visualizationType: extractVisualizationType(query)
+        }
+      },
+      {
+        intent: 'status_report',
+        patterns: ['status', 'progress', 'update', 'where', 'stand'],
+        requiresAnalysis: false,
+        entities: {
+          boardId: extractBoardReference(query),
+          timeframe: extractTimeframe(query)
+        }
+      }
+    ];
+    
+    // Find matching intent
+    let matchedIntent = null;
+    let highestScore = 0;
+    
+    for (const intentPattern of intentPatterns) {
+      const score = calculatePatternMatchScore(lowerQuery, intentPattern.patterns);
+      
+      if (score > highestScore) {
+        highestScore = score;
+        matchedIntent = { ...intentPattern };
+      }
+    }
+    
+    // Default to general query if no strong match
+    if (highestScore < 0.3) {
+      matchedIntent = {
+        intent: 'general_query',
+        requiresAnalysis: false,
+        entities: {
+          query: query
+        }
+      };
+    }
+    
+    return matchedIntent;
+  } catch (error) {
+    console.error('Error processing query:', error);
+    throw error;
+  }
+};
+
+/**
+ * Calculate a match score between query and pattern words
+ * @param {string} query - User's query
+ * @param {Array} patterns - List of pattern words to match
+ * @returns {number} - Score between 0 and 1
+ */
+const calculatePatternMatchScore = (query, patterns) => {
+  let matchCount = 0;
+  
+  for (const pattern of patterns) {
+    if (query.includes(pattern)) {
+      matchCount++;
+    }
+  }
+  
+  return matchCount / patterns.length;
+};
+
+/**
+ * Extract board reference from query
+ * @param {string} query - User's query
+ * @returns {string|null} - Extracted board ID or name
+ */
+const extractBoardReference = (query) => {
+  // Look for explicit board references
+  const boardPatterns = [
+    /board ["\'](.+?)["\']/, // "board 'Board Name'" format
+    /board (\d+)/, // "board 123456789" format
+    /board (called|named|titled) ["\']?(.+?)["\']?(\s|$)/ // "board called Board Name" format
+  ];
+  
+  for (const pattern of boardPatterns) {
+    const match = query.match(pattern);
+    if (match) {
+      // Return the captured board name or id
+      return match[1] || match[2];
+    }
+  }
+  
+  // If no explicit reference, look for "my board", "current board", etc.
+  if (query.includes('current board') || 
+      query.includes('my board') || 
+      query.includes('this board')) {
+    return 'current';
+  }
+  
+  return null; // No board reference found
+};
+
+/**
+ * Extract timeframe from query
+ * @param {string} query - User's query
+ * @returns {Object|null} - Extracted timeframe information
+ */
+const extractTimeframe = (query) => {
+  // Time period patterns
+  const timePatterns = [
+    { pattern: /last (\d+) days?/, unit: 'day' },
+    { pattern: /last (\d+) weeks?/, unit: 'week' },
+    { pattern: /last (\d+) months?/, unit: 'month' },
+    { pattern: /past (\d+) days?/, unit: 'day' },
+    { pattern: /past (\d+) weeks?/, unit: 'week' },
+    { pattern: /past (\d+) months?/, unit: 'month' },
+    { pattern: /(\d+) days? ago/, unit: 'day' },
+    { pattern: /(\d+) weeks? ago/, unit: 'week' },
+    { pattern: /(\d+) months? ago/, unit: 'month' }
+  ];
+  
+  // Special timeframes
+  const specialTimeframes = [
+    { pattern: /today|24 hours/, value: { unit: 'day', value: 1 } },
+    { pattern: /this week/, value: { unit: 'week', value: 1 } },
+    { pattern: /this month/, value: { unit: 'month', value: 1 } },
+    { pattern: /last week/, value: { unit: 'week', value: 1 } },
+    { pattern: /last month/, value: { unit: 'month', value: 1 } },
+    { pattern: /all time/, value: { unit: 'all' } }
+  ];
+  
+  // Check special timeframes first
+  for (const timeframe of specialTimeframes) {
+    if (query.match(timeframe.pattern)) {
+      return timeframe.value;
+    }
+  }
+  
+  // Check time period patterns
+  for (const timePeriod of timePatterns) {
+    const match = query.match(timePeriod.pattern);
+    if (match) {
+      return {
+        unit: timePeriod.unit,
+        value: parseInt(match[1], 10)
+      };
+    }
+  }
+  
+  return null; // No timeframe found
+};
+
+/**
+ * Extract recommendation type from query
+ * @param {string} query - User's query
+ * @returns {string|null} - Type of recommendation
+ */
+const extractRecommendationType = (query) => {
+  const lowerQuery = query.toLowerCase();
+  
+  if (lowerQuery.includes('automation') || lowerQuery.includes('automate')) {
+    return 'automation';
+  }
+  
+  if (lowerQuery.includes('structure') || lowerQuery.includes('organize')) {
+    return 'structure';
+  }
+  
+  if (lowerQuery.includes('bottleneck') || lowerQuery.includes('speed up')) {
+    return 'bottleneck';
+  }
+  
+  if (lowerQuery.includes('workload') || lowerQuery.includes('balance')) {
+    return 'workload';
+  }
+  
+  return 'general'; // General recommendations
+};
+
+/**
+ * Extract workspace type from query
+ * @param {string} query - User's query
+ * @returns {string|null} - Type of workspace to create
+ */
+const extractWorkspaceType = (query) => {
+  const lowerQuery = query.toLowerCase();
+  
+  if (lowerQuery.includes('agile') || lowerQuery.includes('sprint') || lowerQuery.includes('scrum')) {
+    return 'agile';
+  }
+  
+  if (lowerQuery.includes('marketing') || lowerQuery.includes('campaign')) {
+    return 'marketing';
+  }
+  
+  if (lowerQuery.includes('product') || lowerQuery.includes('launch')) {
+    return 'product';
+  }
+  
+  if (lowerQuery.includes('hr') || lowerQuery.includes('recruitment') || lowerQuery.includes('hiring')) {
+    return 'hr';
+  }
+  
+  if (lowerQuery.includes('content') || lowerQuery.includes('editorial')) {
+    return 'content';
+  }
+  
+  return null; // No specific type identified
+};
+
+/**
+ * Extract team member from query
+ * @param {string} query - User's query
+ * @returns {string|null} - Extracted team member name
+ */
+const extractTeamMember = (query) => {
+  // Match patterns like "assigned to NAME" or "NAME's workload"
+  const memberPatterns = [
+    /assigned to ["\']?([A-Za-z\s]+)["\']?/,
+    /([A-Za-z\s]+)['']s workload/,
+    /([A-Za-z\s]+)['']s tasks/,
+    /([A-Za-z\s]+)['']s assignments/
+  ];
+  
+  for (const pattern of memberPatterns) {
+    const match = query.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  return null; // No team member found
+};
+
+/**
+ * Extract visualization type from query
+ * @param {string} query - User's query
+ * @returns {string} - Type of visualization to show
+ */
+const extractVisualizationType = (query) => {
+  const lowerQuery = query.toLowerCase();
+  
+  if (lowerQuery.includes('flow') || lowerQuery.includes('diagram')) {
+    return 'flow';
+  }
+  
+  if (lowerQuery.includes('time') || lowerQuery.includes('duration')) {
+    return 'time';
+  }
+  
+  if (lowerQuery.includes('team') || lowerQuery.includes('workload')) {
+    return 'workload';
+  }
+  
+  if (lowerQuery.includes('bottleneck') || lowerQuery.includes('constraint')) {
+    return 'bottleneck';
+  }
+  
+  return 'flow'; // Default visualization type
+};
+
+export default {
+  processUserQuery
+};'

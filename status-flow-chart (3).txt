@@ -1,0 +1,248 @@
+import React, { useState, useEffect, useContext, useRef } from 'react';
+import { MondayContext } from '../../context/MondayContext';
+import { AnalysisContext } from '../../context/AnalysisContext';
+import './StatusFlowChart.css';
+
+// This component uses a React implementation for visualization
+// In a real application, you might use a dedicated charting library like D3.js or react-flow-renderer
+const StatusFlowChart = ({ boardId }) => {
+  const { monday } = useContext(MondayContext);
+  const { analysisResults } = useContext(AnalysisContext);
+  
+  const [statusTransitions, setStatusTransitions] = useState({});
+  const [statuses, setStatuses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const fetchStatusTransitions = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // In a real app, this data would come from the workflow analysis
+        // Here we're mocking it for demonstration purposes
+        
+        // Check if we already have analysis results
+        if (analysisResults && analysisResults.statusTransitions) {
+          setStatusTransitions(analysisResults.statusTransitions);
+        } else {
+          // Mock data for demonstration
+          const mockTransitions = {
+            'Backlog': { 'To Do': 42 },
+            'To Do': { 'In Progress': 38, 'Backlog': 5 },
+            'In Progress': { 'Review': 32, 'To Do': 3, 'Done': 2 },
+            'Review': { 'Done': 25, 'In Progress': 7 },
+            'Done': { 'To Do': 1 }
+          };
+          
+          setStatusTransitions(mockTransitions);
+        }
+        
+        setLoading(false);
+      } catch (err) {
+        setError('Failed to load status transitions: ' + err.message);
+        setLoading(false);
+      }
+    };
+
+    fetchStatusTransitions();
+  }, [analysisResults, boardId]);
+
+  // Extract unique statuses from the transitions
+  useEffect(() => {
+    if (Object.keys(statusTransitions).length > 0) {
+      const statusSet = new Set();
+      
+      // Add all "from" statuses
+      Object.keys(statusTransitions).forEach(status => {
+        statusSet.add(status);
+      });
+      
+      // Add all "to" statuses
+      Object.values(statusTransitions).forEach(transitions => {
+        Object.keys(transitions).forEach(status => {
+          statusSet.add(status);
+        });
+      });
+      
+      setStatuses(Array.from(statusSet));
+    }
+  }, [statusTransitions]);
+
+  // Draw the flow chart when statuses or transitions change
+  useEffect(() => {
+    if (statuses.length > 0 && canvasRef.current) {
+      drawFlowChart();
+    }
+  }, [statuses, statusTransitions]);
+
+  // Calculate the total number of transitions
+  const getTotalTransitions = () => {
+    let total = 0;
+    Object.values(statusTransitions).forEach(transitions => {
+      Object.values(transitions).forEach(count => {
+        total += count;
+      });
+    });
+    return total;
+  };
+
+  // Draw the flow chart
+  const drawFlowChart = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const totalTransitions = getTotalTransitions();
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Set dimensions
+    const nodeRadius = 40;
+    const horizontalSpacing = canvas.width / (statuses.length + 1);
+    const verticalCenter = canvas.height / 2;
+    
+    // Draw nodes
+    const nodePositions = {};
+    statuses.forEach((status, index) => {
+      const x = horizontalSpacing * (index + 1);
+      const y = verticalCenter;
+      
+      // Store node position for drawing arrows
+      nodePositions[status] = { x, y };
+      
+      // Draw node circle
+      ctx.beginPath();
+      ctx.arc(x, y, nodeRadius, 0, 2 * Math.PI);
+      ctx.fillStyle = getStatusColor(status);
+      ctx.fill();
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Draw node label
+      ctx.font = '12px Arial';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(status, x, y);
+    });
+    
+    // Draw edges (arrows)
+    ctx.lineWidth = 1;
+    Object.entries(statusTransitions).forEach(([fromStatus, transitions]) => {
+      Object.entries(transitions).forEach(([toStatus, count]) => {
+        if (nodePositions[fromStatus] && nodePositions[toStatus]) {
+          const from = nodePositions[fromStatus];
+          const to = nodePositions[toStatus];
+          
+          // Calculate line thickness based on transition count
+          const lineWidth = Math.max(1, Math.min(8, (count / totalTransitions) * 20));
+          
+          // Draw arrow
+          drawArrow(ctx, from.x, from.y, to.x, to.y, lineWidth, nodeRadius);
+          
+          // Draw count label
+          const midX = (from.x + to.x) / 2;
+          const midY = (from.y + to.y) / 2 - 10;
+          
+          ctx.font = '12px Arial';
+          ctx.fillStyle = '#333';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(count.toString(), midX, midY);
+        }
+      });
+    });
+  };
+
+  // Draw an arrow between two points
+  const drawArrow = (ctx, fromX, fromY, toX, toY, lineWidth, nodeRadius) => {
+    // Calculate direction vector
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    
+    // Normalize direction vector
+    const udx = dx / length;
+    const udy = dy / length;
+    
+    // Calculate start and end points (adjusted for node radius)
+    const startX = fromX + udx * nodeRadius;
+    const startY = fromY + udy * nodeRadius;
+    const endX = toX - udx * nodeRadius;
+    const endY = toY - udy * nodeRadius;
+    
+    // Draw line
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+    
+    // Draw arrowhead
+    const arrowSize = 8;
+    const angle = Math.atan2(dy, dx);
+    
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(
+      endX - arrowSize * Math.cos(angle - Math.PI / 6),
+      endY - arrowSize * Math.sin(angle - Math.PI / 6)
+    );
+    ctx.lineTo(
+      endX - arrowSize * Math.cos(angle + Math.PI / 6),
+      endY - arrowSize * Math.sin(angle + Math.PI / 6)
+    );
+    ctx.closePath();
+    ctx.fillStyle = '#666';
+    ctx.fill();
+  };
+
+  // Get color for a status node
+  const getStatusColor = (status) => {
+    const statusColors = {
+      'Backlog': '#6E6E6E',
+      'To Do': '#579BFC',
+      'In Progress': '#FDAB3D',
+      'Review': '#E2445C',
+      'Done': '#00C875',
+      'Stuck': '#D83A52'
+    };
+    
+    return statusColors[status] || '#7E5EF8';
+  };
+
+  if (loading) {
+    return <div className="loading">Loading workflow data...</div>;
+  }
+  
+  if (error) {
+    return <div className="error">{error}</div>;
+  }
+
+  return (
+    <div className="status-flow-chart">
+      <canvas 
+        ref={canvasRef} 
+        width={800} 
+        height={400}
+        className="flow-canvas"
+      />
+      
+      <div className="flow-legend">
+        {statuses.map((status) => (
+          <div key={status} className="legend-item">
+            <div 
+              className="color-box" 
+              style={{ backgroundColor: getStatusColor(status) }}
+            ></div>
+            <span>{status}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};

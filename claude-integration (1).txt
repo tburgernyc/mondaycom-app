@@ -1,0 +1,1103 @@
+/**
+ * Claude AI Integration
+ * 
+ * This file contains functions for integrating with Claude AI to generate natural language
+ * responses and analyze workflows based on user queries.
+ */
+
+/**
+ * Generate a response based on the query intent and available data
+ * @param {Object} queryAnalysis - Analysis of the user's query (intent, entities)
+ * @param {Object} contextData - Available context data (boards, analysis results)
+ * @returns {Object} - Generated response with text, actions, and visualizations
+ */
+export const generateResponse = async (queryAnalysis, contextData) => {
+  try {
+    const { intent, entities } = queryAnalysis;
+    const { boards, selectedBoard, analysisResults } = contextData;
+    
+    // Select response generator based on intent
+    switch (intent) {
+      case 'analyze_workflow':
+        return generateWorkflowAnalysisResponse(entities, selectedBoard, analysisResults);
+      
+      case 'show_bottlenecks':
+        return generateBottlenecksResponse(entities, selectedBoard, analysisResults);
+      
+      case 'show_efficiency':
+        return generateEfficiencyResponse(entities, selectedBoard, analysisResults);
+      
+      case 'get_recommendations':
+        return generateRecommendationsResponse(entities, selectedBoard, analysisResults);
+      
+      case 'create_workspace':
+        return generateWorkspaceCreationResponse(entities);
+      
+      case 'team_analysis':
+        return generateTeamAnalysisResponse(entities, selectedBoard, analysisResults);
+      
+      case 'visualize_workflow':
+        return generateVisualizationResponse(entities, selectedBoard, analysisResults);
+      
+      case 'status_report':
+        return generateStatusReportResponse(entities, selectedBoard);
+      
+      case 'general_query':
+      default:
+        return generateGeneralResponse(entities, boards, selectedBoard);
+    }
+  } catch (error) {
+    console.error('Error generating response:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generate workflow analysis response
+ * @param {Object} entities - Extracted entities from query
+ * @param {Object} selectedBoard - Currently selected board
+ * @param {Object} analysisResults - Results of workflow analysis
+ * @returns {Object} - Generated response
+ */
+const generateWorkflowAnalysisResponse = (entities, selectedBoard, analysisResults) => {
+  // If no board is selected or specified
+  if (!selectedBoard) {
+    return {
+      text: "I'll need to analyze a specific board to provide workflow insights. Which board would you like me to analyze?",
+      actions: [
+        {
+          type: 'select_board'
+        }
+      ]
+    };
+  }
+  
+  // If we have analysis results
+  if (analysisResults) {
+    const efficiency = analysisResults.workflow?.efficiency || 0;
+    const bottlenecksCount = analysisResults.bottlenecks?.length || 0;
+    const suggestionsCount = analysisResults.optimizationSuggestions?.length || 0;
+    
+    return {
+      text: `I've analyzed the "${selectedBoard.name}" board and found that it has an overall efficiency score of ${efficiency}%. I identified ${bottlenecksCount} bottlenecks and have ${suggestionsCount} optimization suggestions that could improve your workflow.`,
+      actions: [
+        {
+          type: 'run_analysis',
+          boardId: selectedBoard.id
+        }
+      ],
+      visualizations: [
+        {
+          type: 'bottleneck_chart',
+          title: 'Time Spent in Status',
+          data: analysisResults.bottlenecks?.map(b => ({
+            status: b.status,
+            value: b.averageTimeHours
+          })) || []
+        }
+      ],
+      suggestedFollowUps: [
+        "What are the main bottlenecks in my workflow?",
+        "How can I improve my workflow efficiency?",
+        "Show me the team workload distribution",
+        "Visualize my workflow status flow"
+      ]
+    };
+  }
+  
+  // If we need to run analysis
+  return {
+    text: `I'll analyze the "${selectedBoard.name}" board to provide you with workflow insights. Would you like me to start the analysis now?`,
+    actions: [
+      {
+        type: 'run_analysis',
+        boardId: selectedBoard.id
+      }
+    ]
+  };
+};
+
+/**
+ * Generate bottlenecks response
+ * @param {Object} entities - Extracted entities from query
+ * @param {Object} selectedBoard - Currently selected board
+ * @param {Object} analysisResults - Results of workflow analysis
+ * @returns {Object} - Generated response
+ */
+const generateBottlenecksResponse = (entities, selectedBoard, analysisResults) => {
+  // If no board selected or specified
+  if (!selectedBoard) {
+    return {
+      text: "I'll need to analyze a specific board to identify bottlenecks. Which board would you like me to analyze?",
+      actions: [
+        {
+          type: 'select_board'
+        }
+      ]
+    };
+  }
+  
+  // If we have analysis results with bottlenecks
+  if (analysisResults && analysisResults.bottlenecks && analysisResults.bottlenecks.length > 0) {
+    const { bottlenecks } = analysisResults;
+    
+    let responseText = `I've identified ${bottlenecks.length} bottlenecks in your "${selectedBoard.name}" workflow:\n\n`;
+    
+    bottlenecks.forEach((bottleneck, index) => {
+      responseText += `${index + 1}. Items are spending an average of ${Math.round(bottleneck.averageTimeHours)} hours in the "${bottleneck.status}" status.\n`;
+    });
+    
+    responseText += `\nWould you like to see detailed recommendations for addressing these bottlenecks?`;
+    
+    return {
+      text: responseText,
+      actions: [
+        {
+          type: 'view_visualization',
+          visualizationType: 'bottleneck',
+          boardId: selectedBoard.id
+        }
+      ],
+      visualizations: [
+        {
+          type: 'bottleneck_chart',
+          title: 'Bottleneck Analysis',
+          data: bottlenecks.map(b => ({
+            status: b.status,
+            value: b.averageTimeHours
+          }))
+        }
+      ],
+      suggestedFollowUps: [
+        "How can I fix these bottlenecks?",
+        "What's causing the delay in " + bottlenecks[0]?.status,
+        "Show me recommendations for optimizing my workflow",
+        "Visualize the workflow status flow"
+      ]
+    };
+  }
+  
+  // If we have analysis results but no bottlenecks
+  if (analysisResults && (!analysisResults.bottlenecks || analysisResults.bottlenecks.length === 0)) {
+    return {
+      text: `I analyzed the "${selectedBoard.name}" board but didn't find any significant bottlenecks in your workflow. This is great news and suggests your process is flowing smoothly!`,
+      suggestedFollowUps: [
+        "Show me the overall workflow efficiency",
+        "Analyze team workload distribution",
+        "Are there any optimization opportunities?",
+        "Visualize my workflow"
+      ]
+    };
+  }
+  
+  // If we need to run analysis
+  return {
+    text: `To identify bottlenecks in the "${selectedBoard.name}" board, I'll need to run a workflow analysis. Would you like me to start the analysis now?`,
+    actions: [
+      {
+        type: 'run_analysis',
+        boardId: selectedBoard.id
+      }
+    ]
+  };
+};
+
+/**
+ * Generate efficiency response
+ * @param {Object} entities - Extracted entities from query
+ * @param {Object} selectedBoard - Currently selected board
+ * @param {Object} analysisResults - Results of workflow analysis
+ * @returns {Object} - Generated response
+ */
+const generateEfficiencyResponse = (entities, selectedBoard, analysisResults) => {
+  // If no board selected or specified
+  if (!selectedBoard) {
+    return {
+      text: "I'll need to analyze a specific board to show efficiency metrics. Which board would you like me to analyze?",
+      actions: [
+        {
+          type: 'select_board'
+        }
+      ]
+    };
+  }
+  
+  // If we have analysis results
+  if (analysisResults) {
+    const workflowEfficiency = analysisResults.workflow?.efficiency || 0;
+    const columnsEfficiency = analysisResults.columns?.efficiency || 0;
+    const groupsEfficiency = analysisResults.groups?.efficiency || 0;
+    
+    // Calculate overall efficiency
+    const overallEfficiency = Math.round((workflowEfficiency + columnsEfficiency + groupsEfficiency) / 3);
+    
+    // Generate efficiency assessment
+    let efficiencyAssessment;
+    if (overallEfficiency >= 80) {
+      efficiencyAssessment = "Your workflow is highly efficient";
+    } else if (overallEfficiency >= 60) {
+      efficiencyAssessment = "Your workflow efficiency is good, but there's room for improvement";
+    } else if (overallEfficiency >= 40) {
+      efficiencyAssessment = "Your workflow has moderate efficiency, with several opportunities for improvement";
+    } else {
+      efficiencyAssessment = "Your workflow efficiency is low, with significant opportunities for improvement";
+    }
+    
+    return {
+      text: `${efficiencyAssessment}. The "${selectedBoard.name}" board has an overall efficiency score of ${overallEfficiency}%.\n\nBreakdown:\n- Data Completeness: ${workflowEfficiency}%\n- Column Structure: ${columnsEfficiency}%\n- Group Organization: ${groupsEfficiency}%\n\nWould you like to see specific recommendations for improving efficiency?`,
+      actions: [
+        {
+          type: 'view_visualization',
+          visualizationType: 'efficiency',
+          boardId: selectedBoard.id
+        }
+      ],
+      suggestedFollowUps: [
+        "What are the bottlenecks affecting efficiency?",
+        "Show me recommendations for improving efficiency",
+        "How does this compare to other boards?",
+        "What's the team workload distribution?"
+      ]
+    };
+  }
+  
+  // If we need to run analysis
+  return {
+    text: `To show efficiency metrics for the "${selectedBoard.name}" board, I'll need to run a workflow analysis. Would you like me to start the analysis now?`,
+    actions: [
+      {
+        type: 'run_analysis',
+        boardId: selectedBoard.id
+      }
+    ]
+  };
+};
+
+/**
+ * Generate recommendations response
+ * @param {Object} entities - Extracted entities from query
+ * @param {Object} selectedBoard - Currently selected board
+ * @param {Object} analysisResults - Results of workflow analysis
+ * @returns {Object} - Generated response
+ */
+const generateRecommendationsResponse = (entities, selectedBoard, analysisResults) => {
+  // If no board selected or specified
+  if (!selectedBoard) {
+    return {
+      text: "I'll need to analyze a specific board to provide optimization recommendations. Which board would you like me to analyze?",
+      actions: [
+        {
+          type: 'select_board'
+        }
+      ]
+    };
+  }
+  
+  // If we have analysis results with recommendations
+  if (analysisResults && analysisResults.optimizationSuggestions && analysisResults.optimizationSuggestions.length > 0) {
+    const { optimizationSuggestions } = analysisResults;
+    
+    // Filter recommendations by type if specified
+    let filteredSuggestions = optimizationSuggestions;
+    if (entities.recommendationType && entities.recommendationType !== 'general') {
+      filteredSuggestions = optimizationSuggestions.filter(
+        suggestion => suggestion.category.toLowerCase().includes(entities.recommendationType.toLowerCase())
+      );
+    }
+    
+    if (filteredSuggestions.length === 0) {
+      return {
+        text: `I analyzed the "${selectedBoard.name}" board but didn't find any specific ${entities.recommendationType} optimization suggestions. Would you like to see general optimization recommendations instead?`,
+        actions: [
+          {
+            type: 'view_visualization',
+            visualizationType: 'recommendations',
+            boardId: selectedBoard.id
+          }
+        ]
+      };
+    }
+    
+    // Generate response with top 3 suggestions
+    let responseText = `Here are my top recommendations for optimizing your "${selectedBoard.name}" workflow:\n\n`;
+    
+    filteredSuggestions.slice(0, 3).forEach((suggestion, index) => {
+      responseText += `${index + 1}. ${suggestion.title} - ${suggestion.description}\n`;
+    });
+    
+    if (filteredSuggestions.length > 3) {
+      responseText += `\nI have ${filteredSuggestions.length - 3} more suggestions. Would you like to see them all?`;
+    }
+    
+    return {
+      text: responseText,
+      actions: [
+        {
+          type: 'view_visualization',
+          visualizationType: 'recommendations',
+          boardId: selectedBoard.id
+        }
+      ],
+      suggestedFollowUps: [
+        "Show me all optimization suggestions",
+        "What bottlenecks did you identify?",
+        "How can I improve team workload balance?",
+        "Implement these recommendations automatically"
+      ]
+    };
+  }
+  
+  // If we have analysis results but no recommendations
+  if (analysisResults && (!analysisResults.optimizationSuggestions || analysisResults.optimizationSuggestions.length === 0)) {
+    return {
+      text: `I analyzed the "${selectedBoard.name}" board but didn't find any significant optimization opportunities. Your workflow appears to be well-structured and efficient.`,
+      suggestedFollowUps: [
+        "Generate AI recommendations",
+        "Show me workflow visualizations",
+        "Analyze team workload",
+        "What's the overall efficiency score?"
+      ],
+      actions: [
+        {
+          type: 'run_analysis',
+          boardId: selectedBoard.id
+        }
+      ]
+    };
+  }
+  
+  // If we need to run analysis
+  return {
+    text: `To provide optimization recommendations for the "${selectedBoard.name}" board, I'll need to run a workflow analysis. Would you like me to start the analysis now?`,
+    actions: [
+      {
+        type: 'run_analysis',
+        boardId: selectedBoard.id
+      }
+    ]
+  };
+};
+
+/**
+ * Generate workspace creation response
+ * @param {Object} entities - Extracted entities from query
+ * @returns {Object} - Generated response
+ */
+const generateWorkspaceCreationResponse = (entities) => {
+  const { workspaceType, description } = entities;
+  
+  // If we have a specific workspace type
+  if (workspaceType) {
+    let workspaceTypeName;
+    
+    switch (workspaceType) {
+      case 'agile':
+        workspaceTypeName = 'Agile Development';
+        break;
+      case 'marketing':
+        workspaceTypeName = 'Marketing Campaigns';
+        break;
+      case 'product':
+        workspaceTypeName = 'Product Launch';
+        break;
+      case 'hr':
+        workspaceTypeName = 'HR Recruitment';
+        break;
+      case 'content':
+        workspaceTypeName = 'Content Calendar';
+        break;
+      default:
+        workspaceTypeName = 'Custom';
+    }
+    
+    return {
+      text: `I'd be happy to help you create a new ${workspaceTypeName} workspace. Would you like to use a template or create a custom workspace based on your description?`,
+      actions: [
+        {
+          type: 'create_workspace',
+          workspaceDetails: {
+            type: workspaceType,
+            description: description,
+            template: workspaceType
+          }
+        }
+      ],
+      suggestedFollowUps: [
+        `Use the ${workspaceTypeName} template`,
+        "Create a custom workspace",
+        "Show me all available templates",
+        "Customize the default template"
+      ]
+    };
+  }
+  
+  // Generic workspace creation
+  return {
+    text: "I'd be happy to help you create a new workspace. Would you like to start from a template or describe your workflow needs in detail?",
+    actions: [
+      {
+        type: 'create_workspace',
+        workspaceDetails: {
+          description: description
+        }
+      }
+    ],
+    suggestedFollowUps: [
+      "Show me available templates",
+      "Create a custom workspace",
+      "Create an Agile Development workspace",
+      "Create a Marketing Campaigns workspace"
+    ]
+  };
+};
+
+/**
+ * Generate team analysis response
+ * @param {Object} entities - Extracted entities from query
+ * @param {Object} selectedBoard - Currently selected board
+ * @param {Object} analysisResults - Results of workflow analysis
+ * @returns {Object} - Generated response
+ */
+const generateTeamAnalysisResponse = (entities, selectedBoard, analysisResults) => {
+  // If no board selected or specified
+  if (!selectedBoard) {
+    return {
+      text: "I'll need to analyze a specific board to show team workload analysis. Which board would you like me to analyze?",
+      actions: [
+        {
+          type: 'select_board'
+        }
+      ]
+    };
+  }
+  
+  // Mock team workload data (in a real application, this would come from the analysis)
+  const teamWorkload = [
+    { name: "John Smith", value: 12 },
+    { name: "Maria Garcia", value: 9 },
+    { name: "David Wilson", value: 7 },
+    { name: "Sarah Johnson", value: 4 },
+    { name: "Michael Brown", value: 3 }
+  ];
+  
+  // If a specific team member is specified
+  if (entities.teamMember) {
+    const memberName = entities.teamMember;
+    const memberData = teamWorkload.find(member => 
+      member.name.toLowerCase().includes(memberName.toLowerCase())
+    );
+    
+    if (memberData) {
+      return {
+        text: `${memberData.name} currently has ${memberData.value} items assigned on the "${selectedBoard.name}" board. This is ${memberData.value > 8 ? 'above' : 'below'} the team average of 7 items per person.`,
+        actions: [
+          {
+            type: 'view_visualization',
+            visualizationType: 'workload',
+            boardId: selectedBoard.id
+          }
+        ],
+        suggestedFollowUps: [
+          "Show the full team workload analysis",
+          "Is the workload balanced?",
+          "Who has the most items assigned?",
+          "Recommend workload optimizations"
+        ]
+      };
+    } else {
+      return {
+        text: `I couldn't find a team member matching "${memberName}" on the "${selectedBoard.name}" board. Would you like to see the workload for all team members instead?`,
+        actions: [
+          {
+            type: 'view_visualization',
+            visualizationType: 'workload',
+            boardId: selectedBoard.id
+          }
+        ]
+      };
+    }
+  }
+  
+  // General team analysis
+  return {
+    text: `I analyzed the team workload on the "${selectedBoard.name}" board. There's a workload imbalance - the top 2 team members are handling 50% of all items. John Smith has the highest workload with 12 items assigned.`,
+    actions: [
+      {
+        type: 'view_visualization',
+        visualizationType: 'workload',
+        boardId: selectedBoard.id
+      }
+    ],
+    visualizations: [
+      {
+        type: 'workload_distribution',
+        title: 'Team Workload Distribution',
+        data: teamWorkload
+      }
+    ],
+    suggestedFollowUps: [
+      "How should we balance the workload?",
+      "Show items assigned to John Smith",
+      "Which items should be reassigned?",
+      "Analyze workflow efficiency"
+    ]
+  };
+};
+
+/**
+ * Generate visualization response
+ * @param {Object} entities - Extracted entities from query
+ * @param {Object} selectedBoard - Currently selected board
+ * @param {Object} analysisResults - Results of workflow analysis
+ * @returns {Object} - Generated response
+ */
+const generateVisualizationResponse = (entities, selectedBoard, analysisResults) => {
+  // If no board selected or specified
+  if (!selectedBoard) {
+    return {
+      text: "I'll need a specific board to create visualizations. Which board would you like to visualize?",
+      actions: [
+        {
+          type: 'select_board'
+        }
+      ]
+    };
+  }
+  
+  const visualizationType = entities.visualizationType || 'flow';
+  
+  switch (visualizationType) {
+    case 'flow':
+      return {
+        text: `Here's a visualization of time spent in each status on your "${selectedBoard.name}" board. The "Review" status has the longest average duration at 36.2 hours, followed by "In Progress" at 24.7 hours.`,
+        actions: [
+          {
+            type: 'view_visualization',
+            visualizationType: 'time',
+            boardId: selectedBoard.id
+          }
+        ],
+        visualizations: [
+          {
+            type: 'bottleneck_chart',
+            title: 'Time in Status',
+            data: [
+              { status: 'Review', value: 36.2 },
+              { status: 'In Progress', value: 24.7 },
+              { status: 'Waiting for Approval', value: 18.5 },
+              { status: 'To Do', value: 12.3 },
+              { status: 'Done', value: 5.2 }
+            ]
+          }
+        ],
+        suggestedFollowUps: [
+          "What's causing the long review time?",
+          "Show me bottleneck recommendations",
+          "Visualize the workflow status flow",
+          "Analyze team workload"
+        ]
+      };
+      
+    case 'workload':
+      return {
+        text: `Here's the team workload distribution for the "${selectedBoard.name}" board. There appears to be an imbalance in workload, with some team members assigned significantly more items than others.`,
+        actions: [
+          {
+            type: 'view_visualization',
+            visualizationType: 'workload',
+            boardId: selectedBoard.id
+          }
+        ],
+        visualizations: [
+          {
+            type: 'workload_distribution',
+            title: 'Team Workload Distribution',
+            data: [
+              { name: 'John Smith', value: 12 },
+              { name: 'Maria Garcia', value: 9 },
+              { name: 'David Wilson', value: 7 },
+              { name: 'Sarah Johnson', value: 4 },
+              { name: 'Michael Brown', value: 3 }
+            ]
+          }
+        ],
+        suggestedFollowUps: [
+          "Recommend workload balancing",
+          "Who has the most items in the 'Stuck' status?",
+          "Show workflow efficiency metrics",
+          "Visualize the status flow"
+        ]
+      };
+      
+    case 'bottleneck':
+      return {
+        text: `Here's a visualization of bottlenecks in your "${selectedBoard.name}" workflow. I've identified that the "Review" status is the main bottleneck, with items spending an average of 36.2 hours in this stage.`,
+        actions: [
+          {
+            type: 'view_visualization',
+            visualizationType: 'bottleneck',
+            boardId: selectedBoard.id
+          }
+        ],
+        visualizations: [
+          {
+            type: 'bottleneck_chart',
+            title: 'Workflow Bottlenecks',
+            data: [
+              { status: 'Review', value: 36.2 },
+              { status: 'In Progress', value: 24.7 },
+              { status: 'Waiting for Approval', value: 18.5 }
+            ]
+          }
+        ],
+        suggestedFollowUps: [
+          "How can I fix the review bottleneck?",
+          "Who's responsible for reviews?",
+          "Generate optimization recommendations",
+          "Show all workflow efficiency metrics"
+        ]
+      };
+      
+    default:
+      return {
+        text: `I've created a visualization of your "${selectedBoard.name}" workflow. Would you like to see specific visualizations for bottlenecks, time in status, team workload, or status flow?`,
+        actions: [
+          {
+            type: 'view_visualization',
+            visualizationType: 'flow',
+            boardId: selectedBoard.id
+          }
+        ],
+        suggestedFollowUps: [
+          "Show bottleneck analysis",
+          "Visualize time in status",
+          "Show team workload distribution",
+          "Generate recommendations"
+        ]
+      };
+  }
+};
+
+/**
+ * Generate status report response
+ * @param {Object} entities - Extracted entities from query
+ * @param {Object} selectedBoard - Currently selected board
+ * @returns {Object} - Generated response
+ */
+const generateStatusReportResponse = (entities, selectedBoard) => {
+  // If no board selected or specified
+  if (!selectedBoard) {
+    return {
+      text: "I'll need a specific board to generate a status report. Which board would you like to get a status report for?",
+      actions: [
+        {
+          type: 'select_board'
+        }
+      ]
+    };
+  }
+  
+  // Mock status distribution data
+  const statusDistribution = [
+    { status: 'To Do', count: 15 },
+    { status: 'In Progress', count: 9 },
+    { status: 'Review', count: 6 },
+    { status: 'Stuck', count: 3 },
+    { status: 'Done', count: 28 }
+  ];
+  
+  const totalItems = statusDistribution.reduce((sum, item) => sum + item.count, 0);
+  const completedPercentage = Math.round((statusDistribution.find(s => s.status === 'Done').count / totalItems) * 100);
+  const stuckItems = statusDistribution.find(s => s.status === 'Stuck').count;
+  
+  // Generate timeframe text
+  let timeframeText = '';
+  if (entities.timeframe) {
+    switch (entities.timeframe.unit) {
+      case 'day':
+        timeframeText = `in the last ${entities.timeframe.value} day${entities.timeframe.value !== 1 ? 's' : ''}`;
+        break;
+      case 'week':
+        timeframeText = `in the last ${entities.timeframe.value} week${entities.timeframe.value !== 1 ? 's' : ''}`;
+        break;
+      case 'month':
+        timeframeText = `in the last ${entities.timeframe.value} month${entities.timeframe.value !== 1 ? 's' : ''}`;
+        break;
+      case 'all':
+        timeframeText = 'overall';
+        break;
+      default:
+        timeframeText = 'currently';
+    }
+  } else {
+    timeframeText = 'currently';
+  }
+  
+  return {
+    text: `Status report for "${selectedBoard.name}" ${timeframeText}:\n\n${completedPercentage}% of items are complete. There are ${statusDistribution.find(s => s.status === 'In Progress').count} items in progress, ${stuckItems} items marked as stuck, and ${statusDistribution.find(s => s.status === 'To Do').count} items in the backlog.`,
+    visualizations: [
+      {
+        type: 'status_distribution',
+        title: 'Current Status Distribution',
+        data: statusDistribution
+      }
+    ],
+    suggestedFollowUps: [
+      "Show items that are stuck",
+      "Who has the most items in progress?",
+      "When will current items be completed?",
+      "Show workflow bottlenecks"
+    ]
+  };
+};
+
+/**
+ * Generate general response
+ * @param {Object} entities - Extracted entities from query
+ * @param {Array} boards - Available boards
+ * @param {Object} selectedBoard - Currently selected board
+ * @returns {Object} - Generated response
+ */
+const generateGeneralResponse = (entities, boards, selectedBoard) => {
+  const { query } = entities;
+  
+  // If the query contains a greeting or introduction
+  if (/^(hi|hello|hey|greetings)/i.test(query)) {
+    return {
+      text: "Hello! I'm your Monday.com AI Workflow Assistant. I can help you analyze workflows, identify bottlenecks, and optimize your boards. What would you like help with today?",
+      suggestedFollowUps: [
+        "Analyze my current board",
+        "Find workflow bottlenecks",
+        "Create a new workspace",
+        "Show team workload distribution"
+      ]
+    };
+  }
+  
+  // If the query asks about capabilities
+  if (/what can you do|help me with|your capabilities|how can you help/i.test(query)) {
+    return {
+      text: "I can help you with workflow analysis and optimization in Monday.com. Some things I can do:\n\n- Analyze boards to identify bottlenecks\n- Provide efficiency metrics and optimization suggestions\n- Visualize workflow patterns and team workload\n- Create new optimized workspaces based on templates or descriptions\n\nWhat would you like help with?",
+      suggestedFollowUps: [
+        "Analyze my current workflow",
+        "Show efficiency metrics",
+        "Create a new workspace",
+        "Find workflow bottlenecks"
+      ]
+    };
+  }
+  
+  // If user is asking about a board but we don't have enough context
+  if (/my board|current board|this board/i.test(query) && !selectedBoard) {
+    return {
+      text: "It seems you're asking about a specific board, but I don't have a board selected. Would you like to select a board to analyze?",
+      actions: [
+        {
+          type: 'select_board'
+        }
+      ]
+    };
+  }
+  
+  // Default response
+  return {
+    text: "I'm not sure I understand what you're asking. I can help with workflow analysis, finding bottlenecks, showing team workload, or creating new workspaces. Could you clarify what you'd like me to help with?",
+    suggestedFollowUps: [
+      "Analyze my workflow",
+      "Show bottlenecks",
+      "Create a new workspace",
+      "What can you do?"
+    ]
+  };
+};
+
+/**
+ * Generate a workflow structure from natural language description
+ * @param {string} description - Description of the workflow
+ * @returns {Object} - Generated workflow structure
+ */
+export const generateWorkflowFromDescription = async (description) => {
+  try {
+    // In a production environment, this would call Claude API
+    // For demonstration purposes, using a rule-based approach
+    
+    // Identify workflow type from description
+    const lowerDescription = description.toLowerCase();
+    
+    let workflowType = 'generic';
+    
+    if (lowerDescription.includes('agile') || 
+        lowerDescription.includes('sprint') || 
+        lowerDescription.includes('scrum') ||
+        lowerDescription.includes('development') ||
+        lowerDescription.includes('software')) {
+      workflowType = 'agile';
+    } else if (lowerDescription.includes('marketing') || 
+               lowerDescription.includes('campaign') ||
+               lowerDescription.includes('content') ||
+               lowerDescription.includes('social media')) {
+      workflowType = 'marketing';
+    } else if (lowerDescription.includes('product') || 
+               lowerDescription.includes('launch') ||
+               lowerDescription.includes('release')) {
+      workflowType = 'product';
+    } else if (lowerDescription.includes('hr') || 
+               lowerDescription.includes('recruitment') ||
+               lowerDescription.includes('hiring') ||
+               lowerDescription.includes('candidate')) {
+      workflowType = 'hr';
+    }
+    
+    // Generate workflow structure based on type
+    switch (workflowType) {
+      case 'agile':
+        return {
+          board_name: extractBoardName(description) || 'Agile Development',
+          columns: [
+            { title: 'Status', type: 'status' },
+            { title: 'Owner', type: 'people' },
+            { title: 'Priority', type: 'dropdown' },
+            { title: 'Story Points', type: 'numbers' },
+            { title: 'Due Date', type: 'date' },
+            { title: 'Sprint', type: 'dropdown' }
+          ],
+          groups: [
+            'Backlog',
+            'To Do',
+            'In Progress',
+            'Review',
+            'Done'
+          ],
+          roles: [
+            'Product Owner',
+            'Scrum Master',
+            'Developer',
+            'QA Engineer',
+            'Designer'
+          ],
+          initial_tasks: [
+            {
+              name: 'Set up development environment',
+              group: 'To Do',
+              owner_role: 'Developer',
+              status: 'Working on it'
+            },
+            {
+              name: 'Create product backlog',
+              group: 'Backlog',
+              owner_role: 'Product Owner',
+              status: 'Done'
+            }
+          ]
+        };
+        
+      case 'marketing':
+        return {
+          board_name: extractBoardName(description) || 'Marketing Campaigns',
+          columns: [
+            { title: 'Status', type: 'status' },
+            { title: 'Owner', type: 'people' },
+            { title: 'Channel', type: 'dropdown' },
+            { title: 'Start Date', type: 'date' },
+            { title: 'End Date', type: 'date' },
+            { title: 'Budget', type: 'numbers' },
+            { title: 'Target Audience', type: 'text' }
+          ],
+          groups: [
+            'Planning',
+            'Content Creation',
+            'Design',
+            'Review',
+            'Scheduled',
+            'Live',
+            'Completed'
+          ],
+          roles: [
+            'Marketing Manager',
+            'Content Writer',
+            'Graphic Designer',
+            'Social Media Specialist'
+          ],
+          initial_tasks: [
+            {
+              name: 'Quarterly Marketing Plan',
+              group: 'Planning',
+              owner_role: 'Marketing Manager',
+              status: 'Working on it'
+            }
+          ]
+        };
+        
+      case 'product':
+        return {
+          board_name: extractBoardName(description) || 'Product Launch',
+          columns: [
+            { title: 'Status', type: 'status' },
+            { title: 'Owner', type: 'people' },
+            { title: 'Department', type: 'dropdown' },
+            { title: 'Priority', type: 'dropdown' },
+            { title: 'Timeline', type: 'timeline' },
+            { title: 'Dependencies', type: 'dependency' }
+          ],
+          groups: [
+            'Pre-Launch Planning',
+            'Product Development',
+            'Marketing Preparation',
+            'Sales Enablement',
+            'Launch',
+            'Post-Launch Analysis'
+          ],
+          roles: [
+            'Product Manager',
+            'Marketing Director',
+            'Sales Director',
+            'Customer Support Manager',
+            'Development Lead'
+          ],
+          initial_tasks: [
+            {
+              name: 'Define product positioning',
+              group: 'Pre-Launch Planning',
+              owner_role: 'Product Manager',
+              status: 'Working on it'
+            }
+          ]
+        };
+        
+      case 'hr':
+        return {
+          board_name: extractBoardName(description) || 'HR Recruitment',
+          columns: [
+            { title: 'Status', type: 'status' },
+            { title: 'Recruiter', type: 'people' },
+            { title: 'Position', type: 'dropdown' },
+            { title: 'Department', type: 'dropdown' },
+            { title: 'Application Date', type: 'date' },
+            { title: 'Experience', type: 'numbers' },
+            { title: 'Salary Expectation', type: 'numbers' }
+          ],
+          groups: [
+            'New Applications',
+            'Resume Screening',
+            'Phone Interview',
+            'Technical Assessment',
+            'Final Interview',
+            'Offer',
+            'Hired',
+            'Rejected'
+          ],
+          roles: [
+            'HR Manager',
+            'Recruiter',
+            'Hiring Manager',
+            'Department Head'
+          ],
+          initial_tasks: [
+            {
+              name: 'Senior Developer Position',
+              group: 'Resume Screening',
+              owner_role: 'Recruiter',
+              status: 'Working on it'
+            }
+          ]
+        };
+        
+      default:
+        // Generic workflow
+        return {
+          board_name: extractBoardName(description) || 'New Workflow',
+          columns: [
+            { title: 'Status', type: 'status' },
+            { title: 'Owner', type: 'people' },
+            { title: 'Due Date', type: 'date' },
+            { title: 'Priority', type: 'dropdown' },
+            { title: 'Notes', type: 'text' }
+          ],
+          groups: [
+            'To Do',
+            'In Progress',
+            'Review',
+            'Done'
+          ],
+          roles: [
+            'Manager',
+            'Team Member'
+          ],
+          initial_tasks: [
+            {
+              name: 'Set up workflow',
+              group: 'To Do',
+              owner_role: 'Manager',
+              status: 'Working on it'
+            }
+          ]
+        };
+    }
+  } catch (error) {
+    console.error('Error generating workflow from description:', error);
+    throw error;
+  }
+};
+
+/**
+ * Extract a board name from a natural language description
+ * @param {string} description - Description of the workflow
+ * @returns {string|null} - Extracted board name
+ */
+const extractBoardName = (description) => {
+  // Look for explicit board name patterns
+  const boardNamePatterns = [
+    /board (called|named|titled) ["'](.+?)["']/i,
+    /create a ["'](.+?)["'] (board|workflow)/i,
+    /new (board|workflow) (called|named|titled) ["'](.+?)["']/i
+  ];
+  
+  for (const pattern of boardNamePatterns) {
+    const match = description.match(pattern);
+    if (match) {
+      // Return the captured board name
+      return match[2] || match[1] || match[3];
+    }
+  }
+  
+  // If no explicit name, try to generate one from the description
+  const keyPhrases = description.match(/for ([^,.]+)/i);
+  if (keyPhrases && keyPhrases[1]) {
+    const phrase = keyPhrases[1].trim();
+    // Capitalize first letter of each word
+    return phrase.split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+  
+  return null; // No board name found
+};
+
+export default {
+  generateResponse,
+  generateWorkflowFromDescription
+}; flow visualization showing how items move between statuses on your "${selectedBoard.name}" board. The thickness of each arrow represents the volume of items moving through that path.`,
+        actions: [
+          {
+            type: 'view_visualization',
+            visualizationType: 'flow',
+            boardId: selectedBoard.id
+          }
+        ],
+        visualizations: [
+          {
+            type: 'status_flow',
+            title: 'Workflow Status Flow'
+          }
+        ],
+        suggestedFollowUps: [
+          "Show me bottleneck analysis",
+          "Which status has the longest duration?",
+          "Analyze team workload",
+          "Generate optimization recommendations"
+        ]
+      };
+      
+    case 'time':
+      return {
+        text: `Here's a

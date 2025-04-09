@@ -1,0 +1,219 @@
+import React, { createContext, useState, useContext, useCallback } from 'react';
+import { MondayContext } from './MondayContext';
+import {
+  analyzeWorkflowStructure,
+  identifyBottlenecks,
+  calculateTimeInStatus,
+  generateOptimizationSuggestions
+} from '../services/analysis/workflowAnalysis';
+
+export const AnalysisContext = createContext();
+
+export const AnalysisProvider = ({ children }) => {
+  const { monday, selectedBoard } = useContext(MondayContext);
+  
+  const [analysisResults, setAnalysisResults] = useState(null);
+  const [bottlenecks, setBottlenecks] = useState([]);
+  const [timeInStatus, setTimeInStatus] = useState({});
+  const [optimizationSuggestions, setOptimizationSuggestions] = useState([]);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState(null);
+
+  // Run a complete workflow analysis
+  const runWorkflowAnalysis = useCallback(async (boardId) => {
+    try {
+      setAnalysisLoading(true);
+      setAnalysisError(null);
+      
+      // Fetch required data for analysis
+      const query = `
+        query {
+          boards(ids: [${boardId}]) {
+            name
+            columns {
+              id
+              title
+              type
+              settings_str
+            }
+            groups {
+              id
+              title
+            }
+            items {
+              id
+              name
+              group {
+                id
+                title
+              }
+              column_values {
+                id
+                title
+                text
+                value
+                type
+              }
+            }
+            activity_logs(limit: 1000) {
+              id
+              event
+              created_at
+              data
+              entity {
+                ... on Item {
+                  id
+                  name
+                }
+              }
+              user {
+                id
+                name
+              }
+            }
+          }
+        }
+      `;
+      
+      const response = await monday.api(query);
+      const boardData = response.data.boards[0];
+      
+      // Run different analysis methods
+      const structureAnalysis = await analyzeWorkflowStructure(boardData);
+      const statusChanges = extractStatusChanges(boardData.activity_logs);
+      const timeStatusData = calculateTimeInStatus(statusChanges);
+      const bottlenecksData = identifyBottlenecks(timeStatusData);
+      const suggestions = generateOptimizationSuggestions(
+        structureAnalysis,
+        bottlenecksData,
+        boardData
+      );
+      
+      // Update state with analysis results
+      setAnalysisResults(structureAnalysis);
+      setTimeInStatus(timeStatusData);
+      setBottlenecks(bottlenecksData);
+      setOptimizationSuggestions(suggestions);
+      
+      setAnalysisLoading(false);
+      
+      return {
+        structure: structureAnalysis,
+        bottlenecks: bottlenecksData,
+        timeInStatus: timeStatusData,
+        suggestions
+      };
+    } catch (err) {
+      setAnalysisError('Analysis failed: ' + err.message);
+      setAnalysisLoading(false);
+      throw err;
+    }
+  }, [monday]);
+
+  // Extract status changes from activity logs
+  const extractStatusChanges = useCallback((activityLogs) => {
+    return activityLogs
+      .filter(log => log.event === 'change_column_value' && log.data)
+      .map(log => {
+        let parsedData;
+        try {
+          parsedData = typeof log.data === 'string' ? JSON.parse(log.data) : log.data;
+        } catch (e) {
+          return null;
+        }
+        
+        if (!parsedData.column_id || parsedData.column_id !== 'status') return null;
+        
+        return {
+          itemId: log.entity?.id,
+          itemName: log.entity?.name,
+          previousValue: parsedData.previous_value,
+          newValue: parsedData.value,
+          timestamp: new Date(log.created_at),
+          userId: log.user?.id
+        };
+      })
+      .filter(change => change !== null);
+  }, []);
+
+  // Generate AI-powered optimization recommendations
+  const generateAIRecommendations = useCallback(async (boardData, analysisData) => {
+    try {
+      setAnalysisLoading(true);
+      
+      // Prepare data for AI analysis
+      const aiInput = {
+        boardStructure: {
+          name: boardData.name,
+          columns: boardData.columns.map(c => ({ id: c.id, title: c.title, type: c.type })),
+          groups: boardData.groups.map(g => ({ id: g.id, title: g.title }))
+        },
+        analysis: {
+          bottlenecks: analysisData.bottlenecks,
+          timeInStatus: analysisData.timeInStatus,
+          workflowEfficiency: analysisData.structure.workflow.efficiency
+        }
+      };
+      
+      // Call AI service (this would be integrated with Claude or another AI model)
+      const recommendations = await callAIService(aiInput);
+      
+      setAnalysisLoading(false);
+      return recommendations;
+    } catch (err) {
+      setAnalysisError('AI recommendations failed: ' + err.message);
+      setAnalysisLoading(false);
+      throw err;
+    }
+  }, []);
+
+  // Mock function for AI service call
+  // In a real implementation, this would call Claude API or another AI service
+  const callAIService = async (input) => {
+    // Simulating API call
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          bottleneckRecommendations: [
+            {
+              status: input.analysis.bottlenecks[0]?.status || 'In Progress',
+              recommendation: 'Consider breaking down tasks in this status into smaller, more manageable chunks',
+              impact: 'high'
+            }
+          ],
+          structureRecommendations: [
+            {
+              type: 'column_addition',
+              recommendation: 'Add a Time Estimate column to better track expected completion times',
+              impact: 'medium'
+            }
+          ],
+          automationRecommendations: [
+            {
+              trigger: 'Item moves to In Progress',
+              action: 'Set due date to 7 days from now',
+              impact: 'high'
+            }
+          ]
+        });
+      }, 1500);
+    });
+  };
+
+  const value = {
+    analysisResults,
+    bottlenecks,
+    timeInStatus,
+    optimizationSuggestions,
+    analysisLoading,
+    analysisError,
+    runWorkflowAnalysis,
+    generateAIRecommendations
+  };
+
+  return (
+    <AnalysisContext.Provider value={value}>
+      {children}
+    </AnalysisContext.Provider>
+  );
+};

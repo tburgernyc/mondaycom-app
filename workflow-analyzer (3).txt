@@ -1,0 +1,227 @@
+import React, { useState, useEffect, useContext } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { MondayContext } from '../../context/MondayContext';
+import { AnalysisContext } from '../../context/AnalysisContext';
+import BottleneckDetection from './BottleneckDetection';
+import EfficiencyMetrics from './EfficiencyMetrics';
+import OptimizationSuggestions from './OptimizationSuggestions';
+import StatusFlowChart from '../Visualization/StatusFlowChart';
+import TimeInStatusChart from '../Visualization/TimeInStatusChart';
+import './WorkflowAnalyzer.css';
+
+const WorkflowAnalyzer = () => {
+  const { boardId } = useParams();
+  const navigate = useNavigate();
+  const { monday, loadBoardData, selectedBoard, loading: boardLoading } = useContext(MondayContext);
+  const { 
+    runWorkflowAnalysis, 
+    analysisResults, 
+    bottlenecks, 
+    timeInStatus, 
+    optimizationSuggestions,
+    analysisLoading, 
+    analysisError 
+  } = useContext(AnalysisContext);
+  
+  const [activeTab, setActiveTab] = useState('overview');
+  const [analysisStarted, setAnalysisStarted] = useState(false);
+
+  // Load board data when component mounts
+  useEffect(() => {
+    if (boardId) {
+      loadBoardData(boardId);
+    }
+  }, [boardId, loadBoardData]);
+
+  // Start analysis when board data is loaded
+  const startAnalysis = async () => {
+    if (!selectedBoard) return;
+    
+    try {
+      setAnalysisStarted(true);
+      await runWorkflowAnalysis(boardId);
+    } catch (err) {
+      console.error('Failed to run analysis:', err);
+    }
+  };
+
+  if (boardLoading) {
+    return <div className="loading">Loading board data...</div>;
+  }
+
+  if (!selectedBoard) {
+    return (
+      <div className="error-container">
+        <h2>Board Not Found</h2>
+        <p>The requested board could not be found or you don't have access to it.</p>
+        <button onClick={() => navigate('/')}>Back to Dashboard</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="workflow-analyzer">
+      <div className="analyzer-header">
+        <h1>Workflow Analysis: {selectedBoard.name}</h1>
+        {!analysisStarted ? (
+          <button 
+            className="start-analysis-btn" 
+            onClick={startAnalysis}
+            disabled={analysisLoading}
+          >
+            {analysisLoading ? 'Analyzing...' : 'Start Analysis'}
+          </button>
+        ) : (
+          <button 
+            className="refresh-analysis-btn" 
+            onClick={startAnalysis}
+            disabled={analysisLoading}
+          >
+            {analysisLoading ? 'Analyzing...' : 'Refresh Analysis'}
+          </button>
+        )}
+      </div>
+
+      {analysisError && (
+        <div className="error-message">
+          <p>{analysisError}</p>
+        </div>
+      )}
+
+      <div className="tabs">
+        <button 
+          className={`tab ${activeTab === 'overview' ? 'active' : ''}`}
+          onClick={() => setActiveTab('overview')}
+        >
+          Overview
+        </button>
+        <button 
+          className={`tab ${activeTab === 'bottlenecks' ? 'active' : ''}`}
+          onClick={() => setActiveTab('bottlenecks')}
+        >
+          Bottlenecks
+        </button>
+        <button 
+          className={`tab ${activeTab === 'efficiency' ? 'active' : ''}`}
+          onClick={() => setActiveTab('efficiency')}
+        >
+          Efficiency Metrics
+        </button>
+        <button 
+          className={`tab ${activeTab === 'suggestions' ? 'active' : ''}`}
+          onClick={() => setActiveTab('suggestions')}
+        >
+          Optimization Suggestions
+        </button>
+      </div>
+
+      <div className="tab-content">
+        {analysisLoading ? (
+          <div className="loading">
+            <div className="spinner"></div>
+            <p>Analyzing workflow data...</p>
+          </div>
+        ) : (
+          <>
+            {!analysisStarted ? (
+              <div className="start-analysis-prompt">
+                <p>Click "Start Analysis" to begin analyzing this board's workflow data.</p>
+                <p>The analysis will examine status transitions, identify bottlenecks, and provide optimization suggestions.</p>
+              </div>
+            ) : (
+              <>
+                {activeTab === 'overview' && (
+                  <div className="overview-tab">
+                    <div className="summary-metrics">
+                      <div className="metric-card">
+                        <h3>Workflow Efficiency</h3>
+                        <div className="metric-value">
+                          {analysisResults?.workflow?.efficiency 
+                            ? `${Math.round(analysisResults.workflow.efficiency)}%` 
+                            : 'N/A'}
+                        </div>
+                      </div>
+                      <div className="metric-card">
+                        <h3>Bottlenecks</h3>
+                        <div className="metric-value">
+                          {bottlenecks?.length || 0}
+                        </div>
+                      </div>
+                      <div className="metric-card">
+                        <h3>Optimization Opportunities</h3>
+                        <div className="metric-value">
+                          {optimizationSuggestions?.length || 0}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="visualization-section">
+                      <h2>Workflow Status Flow</h2>
+                      <StatusFlowChart boardId={boardId} />
+                    </div>
+                    
+                    <div className="visualization-section">
+                      <h2>Time in Status</h2>
+                      <TimeInStatusChart timeInStatus={timeInStatus} />
+                    </div>
+                    
+                    <div className="key-findings">
+                      <h2>Key Findings</h2>
+                      {bottlenecks && bottlenecks.length > 0 ? (
+                        <ul>
+                          {bottlenecks.slice(0, 3).map((bottleneck, index) => (
+                            <li key={index}>
+                              <strong>{bottleneck.status}</strong> is a bottleneck with an average time of 
+                              <strong> {bottleneck.averageTimeHours.toFixed(1)} hours</strong>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p>No significant bottlenecks detected.</p>
+                      )}
+                      
+                      {analysisResults?.columns?.missingEssentialColumns && 
+                       analysisResults.columns.missingEssentialColumns.length > 0 && (
+                        <div>
+                          <p>Missing recommended columns:</p>
+                          <ul>
+                            {analysisResults.columns.missingEssentialColumns.map((column, idx) => (
+                              <li key={idx}>{column}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {activeTab === 'bottlenecks' && (
+                  <BottleneckDetection 
+                    bottlenecks={bottlenecks} 
+                    timeInStatus={timeInStatus} 
+                  />
+                )}
+                
+                {activeTab === 'efficiency' && (
+                  <EfficiencyMetrics 
+                    analysisResults={analysisResults} 
+                    boardData={selectedBoard}
+                  />
+                )}
+                
+                {activeTab === 'suggestions' && (
+                  <OptimizationSuggestions 
+                    suggestions={optimizationSuggestions}
+                    boardId={boardId}
+                  />
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default WorkflowAnalyzer;

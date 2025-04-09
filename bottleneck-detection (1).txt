@@ -1,0 +1,143 @@
+import React, { useState } from 'react';
+import TimeInStatusChart from '../Visualization/TimeInStatusChart';
+import './BottleneckDetection.css';
+
+const BottleneckDetection = ({ bottlenecks, timeInStatus }) => {
+  const [selectedBottleneck, setSelectedBottleneck] = useState(null);
+
+  if (!bottlenecks || bottlenecks.length === 0) {
+    return (
+      <div className="no-bottlenecks">
+        <h2>No Bottlenecks Detected</h2>
+        <p>The analysis did not detect any significant bottlenecks in this workflow.</p>
+        <p>This could mean your workflow is running efficiently, or that there isn't enough historical data to identify patterns yet.</p>
+      </div>
+    );
+  }
+
+  const handleBottleneckSelect = (bottleneck) => {
+    setSelectedBottleneck(bottleneck);
+  };
+
+  // Format time based on duration (hours to days if large enough)
+  const formatTime = (hours) => {
+    if (hours >= 24) {
+      const days = Math.floor(hours / 24);
+      const remainingHours = Math.round(hours % 24);
+      return `${days} day${days !== 1 ? 's' : ''} ${remainingHours > 0 ? `${remainingHours} hr${remainingHours !== 1 ? 's' : ''}` : ''}`;
+    }
+    return `${Math.round(hours)} hr${Math.round(hours) !== 1 ? 's' : ''}`;
+  };
+
+  // Generate recommendations based on bottleneck type
+  const generateRecommendations = (bottleneck) => {
+    const recommendations = [
+      {
+        title: 'Break Down Tasks',
+        description: `Items are spending an average of ${formatTime(bottleneck.averageTimeHours)} in "${bottleneck.status}" status. Consider breaking down work into smaller, more manageable tasks.`,
+        impact: 'High'
+      },
+      {
+        title: 'Allocate Additional Resources',
+        description: `Analyze if this stage needs additional team members or resources to process items more efficiently.`,
+        impact: 'Medium'
+      },
+      {
+        title: 'Implement Time Limits',
+        description: `Set up automation to notify team members when items spend more than ${formatTime(bottleneck.averageTimeHours/2)} in this status.`,
+        impact: 'Medium'
+      }
+    ];
+    
+    // Add specific recommendations based on status type
+    if (bottleneck.status.toLowerCase().includes('review') || bottleneck.status.toLowerCase().includes('approval')) {
+      recommendations.push({
+        title: 'Streamline Approval Process',
+        description: 'Consider implementing a clearer approval hierarchy or delegating approval authority to reduce waiting time.',
+        impact: 'High'
+      });
+    }
+    
+    if (bottleneck.status.toLowerCase().includes('waiting') || bottleneck.status.toLowerCase().includes('blocked')) {
+      recommendations.push({
+        title: 'Implement Dependency Management',
+        description: 'Add explicit tracking of dependencies to identify and resolve blockers earlier in the process.',
+        impact: 'High'
+      });
+    }
+    
+    return recommendations;
+  };
+
+  return (
+    <div className="bottleneck-detection">
+      <div className="bottleneck-overview">
+        <h2>Workflow Bottlenecks</h2>
+        <p>The analysis has identified {bottlenecks.length} potential bottleneck{bottlenecks.length !== 1 ? 's' : ''} in your workflow where items are spending more time than expected.</p>
+        
+        <div className="time-in-status-visualization">
+          <TimeInStatusChart timeInStatus={timeInStatus} highlightBottlenecks={true} />
+        </div>
+      </div>
+      
+      <div className="bottleneck-list">
+        <h3>Detected Bottlenecks</h3>
+        <div className="bottleneck-cards">
+          {bottlenecks.map((bottleneck, index) => (
+            <div 
+              key={index} 
+              className={`bottleneck-card ${selectedBottleneck === bottleneck ? 'selected' : ''}`}
+              onClick={() => handleBottleneckSelect(bottleneck)}
+            >
+              <div className="bottleneck-severity" data-severity={
+                bottleneck.averageTimeHours > 72 ? 'high' : 
+                bottleneck.averageTimeHours > 24 ? 'medium' : 'low'
+              }></div>
+              
+              <h4>{bottleneck.status}</h4>
+              <div className="bottleneck-metrics">
+                <div className="metric">
+                  <span className="label">Avg. Time</span>
+                  <span className="value">{formatTime(bottleneck.averageTimeHours)}</span>
+                </div>
+                {bottleneck.itemCount && (
+                  <div className="metric">
+                    <span className="label">Items</span>
+                    <span className="value">{bottleneck.itemCount}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {selectedBottleneck && (
+        <div className="bottleneck-detail">
+          <h3>Optimization Recommendations for "{selectedBottleneck.status}"</h3>
+          
+          <div className="recommendations-list">
+            {generateRecommendations(selectedBottleneck).map((recommendation, index) => (
+              <div key={index} className="recommendation-card">
+                <div className="recommendation-header">
+                  <h4>{recommendation.title}</h4>
+                  <span className={`impact-badge ${recommendation.impact.toLowerCase()}`}>
+                    {recommendation.impact} Impact
+                  </span>
+                </div>
+                <p>{recommendation.description}</p>
+              </div>
+            ))}
+          </div>
+          
+          <div className="action-buttons">
+            <button className="apply-recommendation-btn">Apply Recommendations</button>
+            <button className="export-analysis-btn">Export Analysis</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default BottleneckDetection;

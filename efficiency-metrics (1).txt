@@ -1,0 +1,238 @@
+import React, { useState } from 'react';
+import TeamWorkloadChart from '../Visualization/TeamWorkloadChart';
+import './EfficiencyMetrics.css';
+
+const EfficiencyMetrics = ({ analysisResults, boardData }) => {
+  const [timeFrame, setTimeFrame] = useState('30days');
+  
+  if (!analysisResults || !analysisResults.workflow) {
+    return (
+      <div className="no-efficiency-data">
+        <h2>Efficiency Data Not Available</h2>
+        <p>Please run the workflow analysis to generate efficiency metrics.</p>
+      </div>
+    );
+  }
+
+  const { workflow } = analysisResults;
+  
+  // Calculate cycle time and lead time metrics
+  const calculateTimeMetrics = () => {
+    // This would normally be calculated from the workflow analysis data
+    // For demonstration, using placeholder data
+    return {
+      cycleTime: {
+        average: 3.2,
+        min: 0.5,
+        max: 12,
+        unit: 'days'
+      },
+      leadTime: {
+        average: 7.5,
+        min: 2,
+        max: 21,
+        unit: 'days'
+      },
+      completionRate: {
+        value: 78,
+        trend: '+5%',
+        trendDirection: 'up'
+      },
+      throughput: {
+        value: 42,
+        trend: '-3%',
+        trendDirection: 'down'
+      }
+    };
+  };
+
+  const timeMetrics = calculateTimeMetrics();
+  
+  // Calculate items with missing fields data
+  const calculateIncompleteItems = () => {
+    if (!workflow.incompleteItems) return [];
+    
+    return workflow.incompleteItems.map(item => ({
+      ...item,
+      missingFields: Array.isArray(item.missingFields) 
+        ? item.missingFields 
+        : []
+    })).slice(0, 5); // Only show top 5 for display
+  };
+
+  const incompleteItems = calculateIncompleteItems();
+  
+  // Conversion rate between workflow stages
+  const calculateConversionRates = () => {
+    // This would normally be calculated from status transitions
+    // Using placeholder data for demonstration
+    return [
+      { from: 'Backlog', to: 'To Do', rate: 85 },
+      { from: 'To Do', to: 'In Progress', rate: 92 },
+      { from: 'In Progress', to: 'Review', rate: 78 },
+      { from: 'Review', to: 'Done', rate: 95 }
+    ];
+  };
+
+  const conversionRates = calculateConversionRates();
+
+  return (
+    <div className="efficiency-metrics">
+      <div className="metrics-header">
+        <h2>Workflow Efficiency Metrics</h2>
+        
+        <div className="time-frame-selector">
+          <label>Time frame:</label>
+          <select 
+            value={timeFrame} 
+            onChange={(e) => setTimeFrame(e.target.value)}
+          >
+            <option value="7days">Last 7 days</option>
+            <option value="30days">Last 30 days</option>
+            <option value="90days">Last 90 days</option>
+            <option value="alltime">All time</option>
+          </select>
+        </div>
+      </div>
+      
+      <div className="metrics-overview">
+        <div className="metric-card">
+          <h3>Overall Efficiency</h3>
+          <div className="metric-value primary">
+            <span className="value">{Math.round(workflow.efficiency)}%</span>
+          </div>
+          <p className="metric-description">Based on data completeness, process adherence, and cycle times</p>
+        </div>
+        
+        <div className="metric-card">
+          <h3>Average Cycle Time</h3>
+          <div className="metric-value">
+            <span className="value">{timeMetrics.cycleTime.average}</span>
+            <span className="unit">{timeMetrics.cycleTime.unit}</span>
+          </div>
+          <p className="metric-description">Average time from "In Progress" to "Done"</p>
+        </div>
+        
+        <div className="metric-card">
+          <h3>Average Lead Time</h3>
+          <div className="metric-value">
+            <span className="value">{timeMetrics.leadTime.average}</span>
+            <span className="unit">{timeMetrics.leadTime.unit}</span>
+          </div>
+          <p className="metric-description">Average time from item creation to completion</p>
+        </div>
+        
+        <div className="metric-card">
+          <h3>Completion Rate</h3>
+          <div className="metric-value">
+            <span className="value">{timeMetrics.completionRate.value}%</span>
+            <span className={`trend ${timeMetrics.completionRate.trendDirection}`}>
+              {timeMetrics.completionRate.trend}
+            </span>
+          </div>
+          <p className="metric-description">Percentage of items that reached "Done" status</p>
+        </div>
+      </div>
+      
+      <div className="metrics-detail-section">
+        <div className="conversion-rates">
+          <h3>Status Conversion Rates</h3>
+          <p>The percentage of items that successfully move from one status to the next</p>
+          
+          <div className="conversion-rate-bars">
+            {conversionRates.map((conversion, index) => (
+              <div key={index} className="conversion-rate-item">
+                <div className="conversion-labels">
+                  <span>{conversion.from}</span>
+                  <span className="arrow">→</span>
+                  <span>{conversion.to}</span>
+                </div>
+                <div className="conversion-bar-container">
+                  <div 
+                    className="conversion-bar" 
+                    style={{ width: `${conversion.rate}%` }}
+                  ></div>
+                  <span className="conversion-value">{conversion.rate}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        <div className="team-workload">
+          <h3>Team Workload Distribution</h3>
+          <p>Analysis of work distribution across team members</p>
+          
+          <TeamWorkloadChart boardId={boardData.id} />
+        </div>
+      </div>
+      
+      {incompleteItems.length > 0 && (
+        <div className="data-quality-section">
+          <h3>Data Quality Issues</h3>
+          <p>{workflow.incompleteItems?.length || 0} items with missing or incomplete information</p>
+          
+          <table className="incomplete-items-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Missing Fields</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {incompleteItems.map((item, index) => (
+                <tr key={index}>
+                  <td>{item.name}</td>
+                  <td>
+                    <div className="missing-fields">
+                      {item.missingFields.map((field, fieldIndex) => (
+                        <span key={fieldIndex} className="missing-field-tag">
+                          {field}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td>
+                    <button className="view-item-btn">View Item</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          {workflow.incompleteItems?.length > 5 && (
+            <button className="view-all-btn">
+              View All {workflow.incompleteItems.length} Items
+            </button>
+          )}
+        </div>
+      )}
+      
+      <div className="efficiency-actions">
+        <h3>Recommended Actions</h3>
+        <div className="action-cards">
+          <div className="action-card">
+            <h4>Improve Data Completeness</h4>
+            <p>Add required fields validation to increase data quality.</p>
+            <button className="action-btn">Setup Validation</button>
+          </div>
+          
+          <div className="action-card">
+            <h4>Optimize Review Process</h4>
+            <p>The review process has a 78% conversion rate which could be improved.</p>
+            <button className="action-btn">Analyze Review Stage</button>
+          </div>
+          
+          <div className="action-card">
+            <h4>Balance Team Workload</h4>
+            <p>Some team members have significantly more assigned tasks than others.</p>
+            <button className="action-btn">View Workload Details</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default EfficiencyMetrics;

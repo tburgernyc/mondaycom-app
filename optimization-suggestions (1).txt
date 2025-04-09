@@ -1,0 +1,315 @@
+import React, { useState, useContext } from 'react';
+import { MondayContext } from '../../context/MondayContext';
+import { AnalysisContext } from '../../context/AnalysisContext';
+import './OptimizationSuggestions.css';
+
+const OptimizationSuggestions = ({ suggestions, boardId }) => {
+  const { monday } = useContext(MondayContext);
+  const { generateAIRecommendations, analysisLoading } = useContext(AnalysisContext);
+  
+  const [selectedSuggestions, setSelectedSuggestions] = useState([]);
+  const [implementationStatus, setImplementationStatus] = useState({});
+  const [showAIRecommendations, setShowAIRecommendations] = useState(false);
+  const [aiRecommendations, setAiRecommendations] = useState(null);
+
+  if (!suggestions || suggestions.length === 0) {
+    return (
+      <div className="no-suggestions">
+        <h2>No Optimization Suggestions Available</h2>
+        <p>The analysis did not generate any optimization suggestions for this workflow.</p>
+        <p>You can try running the analysis again or request AI-powered recommendations.</p>
+        <button 
+          className="generate-ai-btn"
+          onClick={handleGenerateAIRecommendations}
+          disabled={analysisLoading}
+        >
+          {analysisLoading ? 'Generating...' : 'Generate AI Recommendations'}
+        </button>
+      </div>
+    );
+  }
+
+  // Toggle selection of a suggestion
+  const toggleSuggestionSelection = (suggestionId) => {
+    setSelectedSuggestions(prevSelected => {
+      if (prevSelected.includes(suggestionId)) {
+        return prevSelected.filter(id => id !== suggestionId);
+      } else {
+        return [...prevSelected, suggestionId];
+      }
+    });
+  };
+
+  // Handle implementation of selected suggestions
+  const handleImplementSuggestions = async () => {
+    if (selectedSuggestions.length === 0) return;
+    
+    const implementing = {};
+    selectedSuggestions.forEach(id => {
+      implementing[id] = 'in_progress';
+    });
+    
+    setImplementationStatus(implementing);
+    
+    // Here you would make the actual API calls to implement each suggestion
+    // For this example, we'll simulate implementation with a timeout
+    
+    try {
+      // Simulate API calls for each suggestion
+      await Promise.all(selectedSuggestions.map(async (id) => {
+        // Simulate implementation delay
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Update status to complete
+        setImplementationStatus(prev => ({
+          ...prev,
+          [id]: 'complete'
+        }));
+      }));
+    } catch (error) {
+      console.error('Error implementing suggestions:', error);
+      
+      // Update failed statuses
+      const failed = {};
+      selectedSuggestions.forEach(id => {
+        failed[id] = 'failed';
+      });
+      
+      setImplementationStatus(prev => ({
+        ...prev,
+        ...failed
+      }));
+    }
+  };
+
+  // Generate AI recommendations
+  async function handleGenerateAIRecommendations() {
+    try {
+      // Fetch board data first
+      const query = `
+        query {
+          boards(ids: [${boardId}]) {
+            name
+            columns {
+              id
+              title
+              type
+              settings_str
+            }
+            groups {
+              id
+              title
+            }
+            items {
+              id
+              name
+              group {
+                id
+                title
+              }
+              column_values {
+                id
+                title
+                text
+                value
+                type
+              }
+            }
+          }
+        }
+      `;
+      
+      const response = await monday.api(query);
+      const boardData = response.data.boards[0];
+      
+      // Get AI recommendations
+      const recommendations = await generateAIRecommendations(boardData, {
+        structure: {columns: {}, groups: {}, workflow: {}},
+        bottlenecks: [],
+        timeInStatus: {}
+      });
+      
+      setAiRecommendations(recommendations);
+      setShowAIRecommendations(true);
+    } catch (error) {
+      console.error('Error generating AI recommendations:', error);
+    }
+  }
+
+  // Group suggestions by category
+  const groupedSuggestions = suggestions.reduce((groups, suggestion) => {
+    const category = suggestion.category || 'General';
+    
+    if (!groups[category]) {
+      groups[category] = [];
+    }
+    
+    groups[category].push(suggestion);
+    return groups;
+  }, {});
+
+  return (
+    <div className="optimization-suggestions">
+      <div className="suggestions-header">
+        <h2>Workflow Optimization Suggestions</h2>
+        <p>The analysis has generated {suggestions.length} suggestions to improve your workflow efficiency.</p>
+        
+        <div className="suggestions-actions">
+          <button 
+            className="implement-btn"
+            onClick={handleImplementSuggestions}
+            disabled={selectedSuggestions.length === 0}
+          >
+            Implement Selected ({selectedSuggestions.length})
+          </button>
+          
+          <button 
+            className="ai-recommendations-btn"
+            onClick={handleGenerateAIRecommendations}
+            disabled={analysisLoading}
+          >
+            {analysisLoading ? 'Generating...' : 'Get AI Recommendations'}
+          </button>
+        </div>
+      </div>
+      
+      <div className="suggestions-content">
+        <div className={`standard-suggestions ${showAIRecommendations ? 'collapsed' : ''}`}>
+          {Object.entries(groupedSuggestions).map(([category, categorySuggestions]) => (
+            <div key={category} className="suggestion-category">
+              <h3>{category}</h3>
+              
+              <div className="suggestion-list">
+                {categorySuggestions.map((suggestion, index) => {
+                  const suggestionId = `${category}-${index}`;
+                  const isSelected = selectedSuggestions.includes(suggestionId);
+                  const implementStatus = implementationStatus[suggestionId];
+                  
+                  return (
+                    <div 
+                      key={suggestionId} 
+                      className={`suggestion-card ${isSelected ? 'selected' : ''} ${implementStatus ? `status-${implementStatus}` : ''}`}
+                    >
+                      <div className="suggestion-header">
+                        <div className="selection-container">
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={() => toggleSuggestionSelection(suggestionId)}
+                            id={`suggestion-${suggestionId}`}
+                            disabled={implementStatus === 'complete'}
+                          />
+                          <label htmlFor={`suggestion-${suggestionId}`}>
+                            {suggestion.title || `Suggestion ${index + 1}`}
+                          </label>
+                        </div>
+                        
+                        <span className={`impact-badge ${(suggestion.impact || 'medium').toLowerCase()}`}>
+                          {suggestion.impact || 'Medium'} Impact
+                        </span>
+                      </div>
+                      
+                      <p className="suggestion-description">{suggestion.description}</p>
+                      
+                      {suggestion.benefits && (
+                        <div className="suggestion-benefits">
+                          <h4>Benefits:</h4>
+                          <ul>
+                            {suggestion.benefits.map((benefit, benefitIndex) => (
+                              <li key={benefitIndex}>{benefit}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {implementStatus && (
+                        <div className={`implementation-status ${implementStatus}`}>
+                          {implementStatus === 'in_progress' && 'Implementing...'}
+                          {implementStatus === 'complete' && 'Successfully Implemented'}
+                          {implementStatus === 'failed' && 'Implementation Failed'}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        {showAIRecommendations && aiRecommendations && (
+          <div className="ai-recommendations">
+            <div className="ai-recommendations-header">
+              <h3>AI-Generated Recommendations</h3>
+              <button 
+                className="close-ai-btn"
+                onClick={() => setShowAIRecommendations(false)}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="ai-recommendation-sections">
+              {aiRecommendations.bottleneckRecommendations && (
+                <div className="ai-section">
+                  <h4>Bottleneck Solutions</h4>
+                  {aiRecommendations.bottleneckRecommendations.map((rec, index) => (
+                    <div key={index} className="ai-recommendation-item">
+                      <div className="recommendation-header">
+                        <span className="status-label">{rec.status}</span>
+                        <span className={`impact-badge ${(rec.impact || 'medium').toLowerCase()}`}>
+                          {rec.impact} Impact
+                        </span>
+                      </div>
+                      <p>{rec.recommendation}</p>
+                      <button className="apply-ai-rec-btn">Apply</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {aiRecommendations.structureRecommendations && (
+                <div className="ai-section">
+                  <h4>Structure Improvements</h4>
+                  {aiRecommendations.structureRecommendations.map((rec, index) => (
+                    <div key={index} className="ai-recommendation-item">
+                      <div className="recommendation-header">
+                        <span className="type-label">{rec.type.replace('_', ' ')}</span>
+                        <span className={`impact-badge ${(rec.impact || 'medium').toLowerCase()}`}>
+                          {rec.impact} Impact
+                        </span>
+                      </div>
+                      <p>{rec.recommendation}</p>
+                      <button className="apply-ai-rec-btn">Apply</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {aiRecommendations.automationRecommendations && (
+                <div className="ai-section">
+                  <h4>Automation Opportunities</h4>
+                  {aiRecommendations.automationRecommendations.map((rec, index) => (
+                    <div key={index} className="ai-recommendation-item">
+                      <div className="automation-details">
+                        <div className="trigger">
+                          <span className="label">When:</span> {rec.trigger}
+                        </div>
+                        <div className="action">
+                          <span className="label">Then:</span> {rec.action}
+                        </div>
+                      </div>
+                      <button className="create-automation-btn">Create Automation</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default OptimizationSuggestions;

@@ -1,0 +1,237 @@
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import { MondayContext } from '../../context/MondayContext';
+import { AnalysisContext } from '../../context/AnalysisContext';
+import { processUserQuery } from '../../services/nlp/intentRecognition';
+import { generateResponse } from '../../services/nlp/claudeIntegration';
+import ResponseDisplay from './ResponseDisplay';
+import './NaturalLanguageInput.css';
+
+const NaturalLanguageInput = () => {
+  const { monday, boards, loadBoards, selectedBoard, setSelectedBoard, loading: mondayLoading } = useContext(MondayContext);
+  const { runWorkflowAnalysis, analysisResults, analysisLoading } = useContext(AnalysisContext);
+  
+  const [userInput, setUserInput] = useState('');
+  const [conversation, setConversation] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [suggestedQueries, setSuggestedQueries] = useState([]);
+  const conversationEndRef = useRef(null);
+  
+  // Load boards when component mounts
+  useEffect(() => {
+    if (!boards || boards.length === 0) {
+      loadBoards();
+    }
+  }, [boards, loadBoards]);
+  
+  // Set initial suggested queries
+  useEffect(() => {
+    setSuggestedQueries([
+      "Show me bottlenecks in my current workflow",
+      "Which team members have the highest workload?",
+      "How can I optimize my development process?",
+      "Create a new workspace for marketing projects",
+      "What's the average time it takes to complete tasks?"
+    ]);
+  }, []);
+  
+  // Scroll to bottom of conversation
+  useEffect(() => {
+    if (conversationEndRef.current) {
+      conversationEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [conversation]);
+  
+  // Handle input change
+  const handleInputChange = (e) => {
+    setUserInput(e.target.value);
+  };
+  
+  // Handle submit (when user presses Enter or clicks Send)
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!userInput.trim() || isProcessing) return;
+    
+    const query = userInput.trim();
+    setUserInput('');
+    
+    // Add user message to conversation
+    setConversation(prev => [...prev, { type: 'user', text: query }]);
+    
+    // Show processing indicator
+    setIsProcessing(true);
+    
+    try {
+      // Process user query to identify intent and entities
+      const queryAnalysis = await processUserQuery(query);
+      
+      let responseData = null;
+      
+      // If we need to run workflow analysis first
+      if (queryAnalysis.requiresAnalysis && selectedBoard) {
+        setConversation(prev => [
+          ...prev, 
+          { 
+            type: 'assistant', 
+            text: `I'll analyze the "${selectedBoard.name}" board to answer your question. This will take a moment...`,
+            isProcessing: true
+          }
+        ]);
+        
+        // Run workflow analysis
+        await runWorkflowAnalysis(selectedBoard.id);
+      }
+      
+      // Generate response based on intent and available data
+      responseData = await generateResponse(
+        queryAnalysis, 
+        {
+          boards,
+          selectedBoard,
+          analysisResults
+        }
+      );
+      
+      // Update conversation with assistant's response
+      setConversation(prev => {
+        // Filter out processing message if it exists
+        const filtered = prev.filter(msg => !msg.isProcessing);
+        
+        return [
+          ...filtered, 
+          { 
+            type: 'assistant', 
+            text: responseData.text,
+            actions: responseData.actions,
+            visualizations: responseData.visualizations
+          }
+        ];
+      });
+      
+      // Update suggested queries based on context
+      if (responseData.suggestedFollowUps) {
+        setSuggestedQueries(responseData.suggestedFollowUps);
+      }
+      
+      // Handle any actions that should happen automatically
+      if (responseData.autoSelectBoard && boards) {
+        const board = boards.find(b => b.id === responseData.autoSelectBoard);
+        if (board) {
+          setSelectedBoard(board);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing query:', error);
+      
+      // Add error message to conversation
+      setConversation(prev => {
+        // Filter out processing message if it exists
+        const filtered = prev.filter(msg => !msg.isProcessing);
+        
+        return [
+          ...filtered, 
+          { 
+            type: 'assistant', 
+            text: 'Sorry, I encountered an error while processing your request. Please try again or rephrase your question.',
+            isError: true
+          }
+        ];
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Handle suggested query click
+  const handleSuggestedQueryClick = (query) => {
+    setUserInput(query);
+  };
+
+  return (
+    <div className="natural-language-interface">
+      <div className="assistant-header">
+        <h1>Monday AI Workflow Assistant</h1>
+        <p className="assistant-description">
+          Ask questions about your workflows, get optimization suggestions, or create new workspaces with natural language.
+        </p>
+      </div>
+      
+      <div className="conversation-container">
+        {conversation.length === 0 ? (
+          <div className="empty-conversation">
+            <div className="assistant-intro">
+              <div className="assistant-icon">
+                <i className="ai-icon"></i>
+              </div>
+              <h2>How can I help with your workflows?</h2>
+              <p>I can analyze your boards, find bottlenecks, suggest improvements, or help you create new workspaces tailored to your needs.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="messages">
+            {conversation.map((message, index) => (
+              <div 
+                key={index} 
+                className={`message ${message.type} ${message.isError ? 'error' : ''} ${message.isProcessing ? 'processing' : ''}`}
+              >
+                {message.type === 'user' ? (
+                  <div className="user-message-content">{message.text}</div>
+                ) : (
+                  <ResponseDisplay 
+                    message={message} 
+                    boards={boards}
+                    selectedBoard={selectedBoard}
+                  />
+                )}
+              </div>
+            ))}
+            <div ref={conversationEndRef} />
+          </div>
+        )}
+      </div>
+      
+      <div className="suggested-queries-container">
+        <h3>Suggested Questions</h3>
+        <div className="suggested-queries">
+          {suggestedQueries.map((query, index) => (
+            <button 
+              key={index} 
+              className="suggested-query" 
+              onClick={() => handleSuggestedQueryClick(query)}
+              disabled={isProcessing}
+            >
+              {query}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      <form className="input-container" onSubmit={handleSubmit}>
+        <input 
+          type="text" 
+          value={userInput} 
+          onChange={handleInputChange} 
+          placeholder="Ask about your workflows or request workspace creation..."
+          disabled={isProcessing || mondayLoading}
+          className="query-input"
+        />
+        <button 
+          type="submit" 
+          className="send-button"
+          disabled={isProcessing || !userInput.trim() || mondayLoading}
+        >
+          {isProcessing ? 'Processing...' : 'Send'}
+        </button>
+      </form>
+      
+      {(analysisLoading || mondayLoading) && (
+        <div className="loading-indicator">
+          <div className="spinner"></div>
+          <p>{analysisLoading ? 'Analyzing workflow data...' : 'Loading Monday.com data...'}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default NaturalLanguageInput;

@@ -1,0 +1,262 @@
+import React, { useState, useEffect, useContext } from 'react';
+import { MondayContext } from '../../context/MondayContext';
+import './TeamWorkloadChart.css';
+
+const TeamWorkloadChart = ({ boardId }) => {
+  const { monday } = useContext(MondayContext);
+  
+  const [workloadData, setWorkloadData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [view, setView] = useState('assigned'); // 'assigned' or 'status'
+
+  useEffect(() => {
+    const fetchWorkloadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Fetch board data with items and person column
+        const query = `
+          query {
+            boards(ids: [${boardId}]) {
+              items {
+                id
+                name
+                column_values {
+                  id
+                  title
+                  text
+                  value
+                  type
+                }
+                group {
+                  id
+                  title
+                }
+              }
+            }
+          }
+        `;
+        
+        const response = await monday.api(query);
+        
+        if (!response.data || !response.data.boards || !response.data.boards[0]) {
+          throw new Error('Invalid response from API');
+        }
+        
+        const items = response.data.boards[0].items;
+        
+        // Process the workload data
+        const workloadByPerson = {};
+        const workloadByStatus = {};
+        
+        items.forEach(item => {
+          // Find person column
+          const personColumn = item.column_values.find(col => 
+            col.type === 'people' || col.id === 'person'
+          );
+          
+          // Find status column
+          const statusColumn = item.column_values.find(col => 
+            col.type === 'status' || col.id === 'status'
+          );
+          
+          if (personColumn && personColumn.text) {
+            // Person might be assigned to multiple people
+            const assignees = personColumn.text.split(', ');
+            
+            assignees.forEach(person => {
+              if (!workloadByPerson[person]) {
+                workloadByPerson[person] = {
+                  assigned: 0,
+                  byStatus: {}
+                };
+              }
+              
+              workloadByPerson[person].assigned += 1;
+              
+              // Track status distribution for each person
+              if (statusColumn && statusColumn.text) {
+                const status = statusColumn.text;
+                
+                if (!workloadByPerson[person].byStatus[status]) {
+                  workloadByPerson[person].byStatus[status] = 0;
+                }
+                
+                workloadByPerson[person].byStatus[status] += 1;
+              }
+            });
+          }
+          
+          // Track overall status distribution
+          if (statusColumn && statusColumn.text) {
+            const status = statusColumn.text;
+            
+            if (!workloadByStatus[status]) {
+              workloadByStatus[status] = 0;
+            }
+            
+            workloadByStatus[status] += 1;
+          }
+        });
+        
+        // Convert to array format
+        const workloadArray = Object.entries(workloadByPerson).map(([person, data]) => ({
+          person,
+          assigned: data.assigned,
+          byStatus: data.byStatus
+        }));
+        
+        // Sort by assigned items (descending)
+        workloadArray.sort((a, b) => b.assigned - a.assigned);
+        
+        setWorkloadData(workloadArray);
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching workload data:', err);
+        setError('Failed to load workload data. ' + err.message);
+        setLoading(false);
+      }
+    };
+    
+    if (boardId) {
+      fetchWorkloadData();
+    }
+  }, [boardId, monday]);
+
+  // Get color for a status
+  const getStatusColor = (status) => {
+    const statusColors = {
+      'Backlog': '#6E6E6E',
+      'To Do': '#579BFC',
+      'In Progress': '#FDAB3D',
+      'Review': '#E2445C',
+      'Done': '#00C875',
+      'Stuck': '#D83A52'
+    };
+    
+    return statusColors[status] || '#7E5EF8';
+  };
+  
+  // Get all unique statuses across all team members
+  const getAllStatuses = () => {
+    const statuses = new Set();
+    
+    workloadData.forEach(person => {
+      Object.keys(person.byStatus).forEach(status => {
+        statuses.add(status);
+      });
+    });
+    
+    return Array.from(statuses);
+  };
+
+  if (loading) {
+    return <div className="loading">Loading workload data...</div>;
+  }
+  
+  if (error) {
+    return <div className="error">{error}</div>;
+  }
+  
+  if (workloadData.length === 0) {
+    return (
+      <div className="no-workload-data">
+        <p>No workload data is available. This could be because:</p>
+        <ul>
+          <li>There are no items assigned to team members</li>
+          <li>The board does not have a Person column</li>
+          <li>The board is empty</li>
+        </ul>
+      </div>
+    );
+  }
+
+  return (
+    <div className="team-workload-chart">
+      <div className="view-selector">
+        <button 
+          className={`view-btn ${view === 'assigned' ? 'active' : ''}`}
+          onClick={() => setView('assigned')}
+        >
+          Total Assignments
+        </button>
+        <button 
+          className={`view-btn ${view === 'status' ? 'active' : ''}`}
+          onClick={() => setView('status')}
+        >
+          By Status
+        </button>
+      </div>
+      
+      <div className="workload-chart">
+        {view === 'assigned' ? (
+          <div className="assigned-view">
+            {workloadData.map((person, index) => (
+              <div key={index} className="workload-bar-container">
+                <div className="person-name">{person.person}</div>
+                <div className="bar-wrapper">
+                  <div 
+                    className="workload-bar"
+                    style={{ 
+                      width: `${(person.assigned / workloadData[0].assigned) * 100}%`
+                    }}
+                  >
+                    {person.assigned}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="status-view">
+            {workloadData.map((person, personIndex) => {
+              const allStatuses = getAllStatuses();
+              
+              return (
+                <div key={personIndex} className="workload-bar-container">
+                  <div className="person-name">{person.person}</div>
+                  <div className="status-bar-wrapper">
+                    {allStatuses.map((status, statusIndex) => {
+                      const count = person.byStatus[status] || 0;
+                      if (count === 0) return null;
+                      
+                      return (
+                        <div 
+                          key={statusIndex}
+                          className="status-segment"
+                          style={{
+                            width: `${(count / person.assigned) * 100}%`,
+                            backgroundColor: getStatusColor(status)
+                          }}
+                          title={`${status}: ${count} items`}
+                        >
+                          {count > 2 ? count : ''}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+            
+            <div className="status-legend">
+              {getAllStatuses().map((status, index) => (
+                <div key={index} className="legend-item">
+                  <div 
+                    className="color-box"
+                    style={{ backgroundColor: getStatusColor(status) }}
+                  ></div>
+                  <span>{status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default TeamWorkloadChart;

@@ -1,0 +1,130 @@
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { MondayProvider } from '../context/MondayContext';
+import { AnalysisProvider } from '../context/AnalysisContext';
+import { AuthProvider, useAuth } from '../components/Authentication/AuthContext';
+import mondaySdk from 'monday-sdk-js';
+
+// Layout components
+import Header from './Layout/Header';
+import Sidebar from './Layout/Sidebar';
+import MainContent from './Layout/MainContent';
+
+// Page components
+import Dashboard from './Dashboard/Dashboard';
+import WorkflowAnalyzer from './WorkflowAnalysis/WorkflowAnalyzer';
+import WorkflowVisualization from './Visualization/WorkflowVisualization';
+import NaturalLanguageInput from './NLPInterface/NaturalLanguageInput';
+import WorkspaceCreator from './WorkspaceCreation/WorkspaceCreator';
+import Login from './Authentication/Login';
+
+import '../assets/styles/global.css';
+
+// Initialize Monday SDK
+const monday = mondaySdk();
+
+// Protected route component
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+  
+  if (loading) {
+    return <div className="loading-screen">Loading...</div>;
+  }
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
+  
+  return children;
+};
+
+function App() {
+  const [appContext, setAppContext] = useState({});
+  
+  useEffect(() => {
+    // Initialize the Monday SDK
+    monday.listen('context', (res) => {
+      setAppContext(res.data);
+    });
+    
+    monday.execute('authenticate');
+  }, []);
+
+  return (
+    <Router>
+      <AuthProvider>
+        <MondayProvider monday={monday} context={appContext}>
+          <AnalysisProvider>
+            <div className="app-container">
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                
+                <Route path="/" element={
+                  <ProtectedRoute>
+                    <Header />
+                    <div className="app-content">
+                      <Sidebar />
+                      <MainContent>
+                        <Dashboard />
+                      </MainContent>
+                    </div>
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/analyze/:boardId" element={
+                  <ProtectedRoute>
+                    <Header />
+                    <div className="app-content">
+                      <Sidebar />
+                      <MainContent>
+                        <WorkflowAnalyzer />
+                      </MainContent>
+                    </div>
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/visualize/:boardId" element={
+                  <ProtectedRoute>
+                    <Header />
+                    <div className="app-content">
+                      <Sidebar />
+                      <MainContent>
+                        <WorkflowVisualization />
+                      </MainContent>
+                    </div>
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/assistant" element={
+                  <ProtectedRoute>
+                    <Header />
+                    <div className="app-content">
+                      <Sidebar />
+                      <MainContent>
+                        <NaturalLanguageInput />
+                      </MainContent>
+                    </div>
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/create-workspace" element={
+                  <ProtectedRoute>
+                    <Header />
+                    <div className="app-content">
+                      <Sidebar />
+                      <MainContent>
+                        <WorkspaceCreator />
+                      </MainContent>
+                    </div>
+                  </ProtectedRoute>
+                } />
+              </Routes>
+            </div>
+          </AnalysisProvider>
+        </MondayProvider>
+      </AuthProvider>
+    </Router>
+  );
+}
+
+export default App;

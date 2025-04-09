@@ -1,0 +1,265 @@
+import React, { useState, useEffect, useContext } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { MondayContext } from '../../context/MondayContext';
+import TemplateSelection from './TemplateSelection';
+import WorkflowConfigurator from './WorkflowConfigurator';
+import { generateWorkflowFromDescription } from '../../services/nlp/claudeIntegration';
+import { createWorkspace, createBoard, addColumnsToBoard, createGroups } from '../../services/api/mondayApi';
+import './WorkspaceCreator.css';
+
+const WorkspaceCreator = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { monday } = useContext(MondayContext);
+  
+  const [workspaceDetails, setWorkspaceDetails] = useState(null);
+  const [step, setStep] = useState('description');
+  const [template, setTemplate] = useState(null);
+  const [workflowStructure, setWorkflowStructure] = useState(null);
+  const [description, setDescription] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState(null);
+  const [creationResult, setCreationResult] = useState(null);
+  
+  // Check if we have workspace details from navigation
+  useEffect(() => {
+    if (location.state && location.state.workspaceDetails) {
+      const { workspaceDetails } = location.state;
+      setWorkspaceDetails(workspaceDetails);
+      
+      if (workspaceDetails.description) {
+        setDescription(workspaceDetails.description);
+      }
+      
+      if (workspaceDetails.template) {
+        setTemplate(workspaceDetails.template);
+        setStep('configure');
+      }
+    }
+  }, [location]);
+  
+  // Generate workflow structure from description
+  const handleGenerateWorkflow = async () => {
+    if (!description.trim()) {
+      setError('Please provide a description of your workflow.');
+      return;
+    }
+    
+    setIsGenerating(true);
+    setError(null);
+    
+    try {
+      const generatedStructure = await generateWorkflowFromDescription(description);
+      setWorkflowStructure(generatedStructure);
+      setStep('configure');
+    } catch (err) {
+      console.error('Failed to generate workflow:', err);
+      setError('Failed to generate workflow structure. Please try a more detailed description or select a template.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+  
+  // Handle template selection
+  const handleTemplateSelect = (selectedTemplate) => {
+    setTemplate(selectedTemplate);
+    setWorkflowStructure(selectedTemplate.structure);
+    setStep('configure');
+  };
+  
+  // Handle workflow configuration changes
+  const handleWorkflowUpdate = (updatedWorkflow) => {
+    setWorkflowStructure(updatedWorkflow);
+  };
+  
+  // Handle workspace creation
+  const handleCreateWorkspace = async () => {
+    if (!workflowStructure) {
+      setError('No workflow structure available. Please generate a workflow or select a template.');
+      return;
+    }
+    
+    setIsCreating(true);
+    setError(null);
+    
+    try {
+      // Create the workspace
+      const workspaceName = workflowStructure.board_name || 'New Workspace';
+      const workspaceResponse = await createWorkspace(monday, {
+        name: workspaceName,
+        kind: 'open',
+        description: description || `Workspace for ${workspaceName}`
+      });
+      
+      const workspaceId = workspaceResponse.data.create_workspace.id;
+      
+      // Create the board
+      const boardResponse = await createBoard(monday, {
+        boardName: workflowStructure.board_name,
+        boardKind: 'public',
+        workspaceId
+      });
+      
+      const boardId = boardResponse.data.create_board.id;
+      
+      // Add columns to the board
+      if (workflowStructure.columns && workflowStructure.columns.length > 0) {
+        await addColumnsToBoard(monday, boardId, workflowStructure.columns);
+      }
+      
+      // Create groups
+      if (workflowStructure.groups && workflowStructure.groups.length > 0) {
+        await createGroups(monday, boardId, workflowStructure.groups);
+      }
+      
+      // Create initial tasks (would be implemented here)
+      
+      // Set creation result
+      setCreationResult({
+        workspaceId,
+        boardId,
+        workspaceName,
+        boardName: workflowStructure.board_name
+      });
+      
+      // Move to success step
+      setStep('success');
+    } catch (err) {
+      console.error('Failed to create workspace:', err);
+      setError('Failed to create workspace: ' + err.message);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+  
+  // Handle back button
+  const handleBack = () => {
+    if (step === 'configure') {
+      setStep('description');
+    } else if (step === 'success') {
+      // Reset everything and go back to description
+      setWorkspaceDetails(null);
+      setTemplate(null);
+      setWorkflowStructure(null);
+      setDescription('');
+      setStep('description');
+    }
+  };
+  
+  return (
+    <div className="workspace-creator">
+      <div className="creator-header">
+        <h1>Create AI-Optimized Workspace</h1>
+        <p className="creator-description">
+          Describe your workflow needs in natural language, and our AI will generate an optimized workflow structure.
+        </p>
+      </div>
+      
+      {step === 'description' && (
+        <div className="description-step">
+          <div className="description-input-section">
+            <h2>Describe Your Workflow</h2>
+            <p>Provide details about your project, team structure, and workflow requirements.</p>
+            
+            <textarea
+              className="description-input"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Example: I need to create a workspace for our marketing team to manage content creation. We need to track blog posts, social media, and email campaigns from ideation to publication. Our team includes content writers, designers, and marketing managers."
+              rows={8}
+            />
+            
+            <div className="description-actions">
+              <button 
+                className="generate-btn"
+                onClick={handleGenerateWorkflow}
+                disabled={isGenerating || !description.trim()}
+              >
+                {isGenerating ? 'Generating...' : 'Generate Workflow'}
+              </button>
+              <span className="or-divider">or</span>
+              <button 
+                className="template-btn"
+                onClick={() => setStep('template')}
+              >
+                Choose Template
+              </button>
+            </div>
+          </div>
+          
+          {error && (
+            <div className="error-message">
+              {error}
+            </div>
+          )}
+          
+          <div className="description-tips">
+            <h3>Tips for Better Results</h3>
+            <ul>
+              <li>Include information about team roles and responsibilities</li>
+              <li>Describe the stages your workflow should include</li>
+              <li>Mention specific data points you need to track</li>
+              <li>Specify any approval processes or dependencies</li>
+            </ul>
+          </div>
+        </div>
+      )}
+      
+      {step === 'template' && (
+        <TemplateSelection 
+          onSelectTemplate={handleTemplateSelect}
+          onBack={handleBack}
+        />
+      )}
+      
+      {step === 'configure' && workflowStructure && (
+        <WorkflowConfigurator
+          workflowStructure={workflowStructure}
+          onUpdateWorkflow={handleWorkflowUpdate}
+          onCreateWorkspace={handleCreateWorkspace}
+          onBack={handleBack}
+          isCreating={isCreating}
+          error={error}
+        />
+      )}
+      
+      {step === 'success' && creationResult && (
+        <div className="success-step">
+          <div className="success-icon"></div>
+          <h2>Workspace Created Successfully!</h2>
+          
+          <div className="success-details">
+            <p>Your new workspace <strong>{creationResult.workspaceName}</strong> has been created with an initial board <strong>{creationResult.boardName}</strong>.</p>
+            
+            <div className="next-steps">
+              <h3>Next Steps</h3>
+              <div className="next-step-buttons">
+                <button 
+                  className="view-workspace-btn"
+                  onClick={() => window.open(`https://monday.com/boards/workspace/${creationResult.workspaceId}`, '_blank')}
+                >
+                  Open Workspace
+                </button>
+                <button 
+                  className="create-another-btn"
+                  onClick={handleBack}
+                >
+                  Create Another Workspace
+                </button>
+                <button 
+                  className="dashboard-btn"
+                  onClick={() => navigate('/')}
+                >
+                  Return to Dashboard
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default WorkspaceCreator;

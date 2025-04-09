@@ -1,0 +1,278 @@
+import React, { useState } from 'react';
+import './TemplateSelection.css';
+
+const TemplateSelection = ({ onSelectTemplate, onBack }) => {
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Predefined templates
+  const templates = [
+    {
+      id: 'agile-dev',
+      name: 'Agile Development',
+      description: 'Track sprints, user stories, and bugs with an agile development workflow.',
+      category: 'software',
+      icon: 'code-icon',
+      structure: {
+        board_name: 'Agile Development',
+        columns: [
+          { title: 'Status', type: 'status' },
+          { title: 'Owner', type: 'people' },
+          { title: 'Priority', type: 'dropdown' },
+          { title: 'Story Points', type: 'numbers' },
+          { title: 'Due Date', type: 'date' },
+          { title: 'Sprint', type: 'dropdown' }
+        ],
+        groups: [
+          'Backlog',
+          'To Do',
+          'In Progress',
+          'Review',
+          'Done'
+        ],
+        roles: [
+          'Product Owner',
+          'Scrum Master',
+          'Developer',
+          'QA Engineer',
+          'Designer'
+        ],
+        initial_tasks: [
+          {
+            name: 'Set up development environment',
+            group: 'To Do',
+            owner_role: 'Developer',
+            status: 'Working on it'
+          },
+          {
+            name: 'Create product backlog',
+            group: 'Backlog',
+            owner_role: 'Product Owner',
+            status: 'Done'
+          }
+        ]
+      }
+    },
+    {
+      id: 'marketing-campaigns',
+      name: 'Marketing Campaigns',
+      description: 'Plan, create, and track marketing campaigns across multiple channels.',
+      category: 'marketing',
+      icon: 'bullhorn-icon',
+      structure: {
+        board_name: 'Marketing Campaigns',
+        columns: [
+          { title: 'Status', type: 'status' },
+          { title: 'Owner', type: 'people' },
+          { title: 'Channel', type: 'dropdown' },
+          { title: 'Start Date', type: 'date' },
+          { title: 'End Date', type: 'date' },
+          { title: 'Budget', type: 'numbers' },
+          { title: 'Target Audience', type: 'text' }
+        ],
+        groups: [
+          'Planning',
+          'Content Creation',
+          'Design',
+          'Review',
+          'Scheduled',
+          'Live',
+          'Completed'
+        ],
+        roles: [
+          'Marketing Manager',
+          'Content Writer',
+          'Graphic Designer',
+          'Social Media Specialist'
+        ],
+        initial_tasks: [
+          {
+            name: 'Q1 Email Newsletter',
+            group: 'Planning',
+            owner_role: 'Marketing Manager',
+            status: 'Working on it'
+          }
+        ]
+      }
+    },
+    {
+      id: 'product-launch',
+      name: 'Product Launch',
+      description: 'Coordinate all aspects of a product launch from planning to post-launch analysis.',
+      category: 'product',
+      icon: 'rocket-icon',
+      structure: {
+        board_name: 'Product Launch',
+        columns: [
+          { title: 'Status', type: 'status' },
+          { title: 'Owner', type: 'people' },
+          { title: 'Department', type: 'dropdown' },
+          { title: 'Priority', type: 'dropdown' },
+          { title: 'Timeline', type: 'timeline' },
+          { title: 'Dependencies', type: 'dependency' }
+        ],
+        groups: [
+          'Pre-Launch Planning',
+          'Product Development',
+          'Marketing Preparation',
+          'Sales Enablement',
+          'Launch',
+          'Post-Launch Analysis'
+        ],
+        roles: [
+          'Product Manager',
+          'Marketing Director',
+          'Sales Director',
+          'Customer Support Manager',
+          'Development Lead'
+        ],
+        initial_tasks: [
+          {
+            name: 'Define product positioning',
+            group: 'Pre-Launch Planning',
+            owner_role: 'Product Manager',
+            status: 'Working on it'
+          }
+        ]
+      }
+    },
+    {
+      id: 'content-calendar',
+      name: 'Content Calendar',
+      description: 'Plan and schedule content across blogs, social media, and other channels.',
+      category: 'marketing',
+      icon: 'calendar-icon',
+      structure: {
+        board_name: 'Content Calendar',
+        columns: [
+          { title: 'Status', type: 'status' },
+          { title: 'Owner', type: 'people' },
+          { title: 'Content Type', type: 'dropdown' },
+          { title: 'Channel', type: 'dropdown' },
+          { title: 'Publish Date', type: 'date' },
+          { title: 'Keywords', type: 'text' }
+        ],
+        groups: [
+          'Ideas',
+          'Planning',
+          'Writing',
+          'Editing',
+          'Design',
+          'Scheduled',
+          'Published'
+        ],
+        roles: [
+          'Content Manager',
+          'Writer',
+          'Editor',
+          'Designer',
+          'SEO Specialist'
+        ],
+        initial_tasks: [
+          {
+            name: 'Monthly Blog Post',
+            group: 'Ideas',
+            owner_role: 'Content Manager',
+            status: 'Working on it'
+          }
+        ]
+      }
+    },
+    {
+      id: 'hr-recruitment',
+      name: 'HR Recruitment',
+      description: 'Track candidates through the hiring process from application to onboarding.',
+      category: 'hr',
+      icon: 'users-icon',
+      structure: {
+        board_name: 'Recruitment Pipeline',
+        columns: [
+          { title: 'Status', type: 'status' },
+          { title: 'Recruiter', type: 'people' },
+          { title: 'Position', type: 'dropdown' },
+          { title: 'Department', type: 'dropdown' },
+          { title: 'Application Date', type: 'date' },
+          { title: 'Experience', type: 'numbers' },
+          { title: 'Salary Expectation', type: 'numbers' }
+        ],
+        groups: [
+          'New Applications',
+          'Resume Screening',
+          'Phone Interview',
+          'Technical Assessment',
+          'Final Interview',
+          'Offer',
+          'Hired',
+          'Rejected'
+        ],
+        roles: [
+          'HR Manager',
+          'Recruiter',
+          'Hiring Manager',
+          'Department Head'
+        ],
+        initial_tasks: [
+          {
+            name: 'Senior Developer Position',
+            group: 'Resume Screening',
+            owner_role: 'Recruiter',
+            status: 'Working on it'
+          }
+        ]
+      }
+    }
+  ];
+  
+  // Filter templates based on search and category
+  const filteredTemplates = templates.filter(template => {
+    const matchesSearch = template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          template.description.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesCategory = selectedCategory === 'all' || template.category === selectedCategory;
+    
+    return matchesSearch && matchesCategory;
+  });
+  
+  // Get unique categories from templates
+  const categories = ['all', ...new Set(templates.map(template => template.category))];
+  
+  // Handle template selection
+  const handleSelectTemplate = (template) => {
+    onSelectTemplate(template);
+  };
+  
+  return (
+    <div className="template-selection">
+      <div className="template-selection-header">
+        <h2>Choose a Workflow Template</h2>
+        <p>Select a pre-built template to customize for your needs.</p>
+        
+        <div className="template-filters">
+          <div className="search-filter">
+            <input 
+              type="text"
+              placeholder="Search templates..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="search-input"
+            />
+          </div>
+          
+          <div className="category-filter">
+            {categories.map(category => (
+              <button 
+                key={category}
+                className={`category-btn ${selectedCategory === category ? 'active' : ''}`}
+                onClick={() => setSelectedCategory(category)}
+              >
+                {category.charAt(0).toUpperCase() + category.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      
+      <div className="templates-grid">
+        {filteredTemplates.map(template => (
+          <div key={template.id} className="template-card">
+            <div className={`

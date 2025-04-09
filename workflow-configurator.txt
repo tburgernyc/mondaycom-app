@@ -1,0 +1,482 @@
+import React, { useState, useEffect } from 'react';
+import './WorkflowConfigurator.css';
+
+const WorkflowConfigurator = ({ 
+  workflowStructure, 
+  onUpdateWorkflow, 
+  onCreateWorkspace, 
+  onBack,
+  isCreating,
+  error 
+}) => {
+  const [editedWorkflow, setEditedWorkflow] = useState({ ...workflowStructure });
+  const [activeTab, setActiveTab] = useState('board');
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggedItem, setDraggedItem] = useState(null);
+  
+  useEffect(() => {
+    setEditedWorkflow({ ...workflowStructure });
+  }, [workflowStructure]);
+  
+  // Update the parent component when changes are made
+  useEffect(() => {
+    onUpdateWorkflow(editedWorkflow);
+  }, [editedWorkflow, onUpdateWorkflow]);
+  
+  // Handle board name change
+  const handleBoardNameChange = (e) => {
+    setEditedWorkflow({
+      ...editedWorkflow,
+      board_name: e.target.value
+    });
+  };
+  
+  // Handle column changes
+  const handleColumnAdd = () => {
+    setEditedWorkflow({
+      ...editedWorkflow,
+      columns: [
+        ...editedWorkflow.columns,
+        { title: 'New Column', type: 'text' }
+      ]
+    });
+  };
+  
+  const handleColumnChange = (index, field, value) => {
+    const updatedColumns = [...editedWorkflow.columns];
+    updatedColumns[index] = {
+      ...updatedColumns[index],
+      [field]: value
+    };
+    
+    setEditedWorkflow({
+      ...editedWorkflow,
+      columns: updatedColumns
+    });
+  };
+  
+  const handleColumnDelete = (index) => {
+    const updatedColumns = [...editedWorkflow.columns];
+    updatedColumns.splice(index, 1);
+    
+    setEditedWorkflow({
+      ...editedWorkflow,
+      columns: updatedColumns
+    });
+  };
+  
+  // Handle group changes
+  const handleGroupAdd = () => {
+    setEditedWorkflow({
+      ...editedWorkflow,
+      groups: [
+        ...editedWorkflow.groups,
+        `New Group ${editedWorkflow.groups.length + 1}`
+      ]
+    });
+  };
+  
+  const handleGroupChange = (index, value) => {
+    const updatedGroups = [...editedWorkflow.groups];
+    updatedGroups[index] = value;
+    
+    setEditedWorkflow({
+      ...editedWorkflow,
+      groups: updatedGroups
+    });
+  };
+  
+  const handleGroupDelete = (index) => {
+    const updatedGroups = [...editedWorkflow.groups];
+    updatedGroups.splice(index, 1);
+    
+    setEditedWorkflow({
+      ...editedWorkflow,
+      groups: updatedGroups
+    });
+  };
+  
+  // Drag and drop functionality for reordering groups
+  const handleDragStart = (e, index) => {
+    setIsDragging(true);
+    setDraggedItem({
+      type: 'group',
+      index
+    });
+    
+    // Required for Firefox
+    e.dataTransfer.setData('text/plain', '');
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    
+    if (draggedItem && draggedItem.type === 'group' && draggedItem.index !== index) {
+      // Reorder groups
+      const updatedGroups = [...editedWorkflow.groups];
+      const [movedItem] = updatedGroups.splice(draggedItem.index, 1);
+      updatedGroups.splice(index, 0, movedItem);
+      
+      setEditedWorkflow({
+        ...editedWorkflow,
+        groups: updatedGroups
+      });
+      
+      setDraggedItem({
+        ...draggedItem,
+        index
+      });
+    }
+  };
+  
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    setDraggedItem(null);
+  };
+  
+  // Get column type options
+  const getColumnTypeOptions = () => {
+    return [
+      { value: 'text', label: 'Text' },
+      { value: 'status', label: 'Status' },
+      { value: 'people', label: 'People' },
+      { value: 'date', label: 'Date' },
+      { value: 'timeline', label: 'Timeline' },
+      { value: 'numbers', label: 'Numbers' },
+      { value: 'dropdown', label: 'Dropdown' },
+      { value: 'checkbox', label: 'Checkbox' },
+      { value: 'email', label: 'Email' },
+      { value: 'link', label: 'Link' },
+      { value: 'file', label: 'File' },
+      { value: 'tags', label: 'Tags' }
+    ];
+  };
+  
+  return (
+    <div className="workflow-configurator">
+      <div className="configurator-header">
+        <h2>Configure Your Workflow</h2>
+        <p>Customize the structure of your new workspace.</p>
+      </div>
+      
+      <div className="board-name-section">
+        <label htmlFor="board-name">Board Name</label>
+        <input
+          id="board-name"
+          type="text"
+          value={editedWorkflow.board_name || ''}
+          onChange={handleBoardNameChange}
+          placeholder="Enter board name"
+          className="board-name-input"
+        />
+      </div>
+      
+      <div className="config-tabs">
+        <button 
+          className={`config-tab ${activeTab === 'board' ? 'active' : ''}`}
+          onClick={() => setActiveTab('board')}
+        >
+          Board Structure
+        </button>
+        <button 
+          className={`config-tab ${activeTab === 'columns' ? 'active' : ''}`}
+          onClick={() => setActiveTab('columns')}
+        >
+          Columns
+        </button>
+        <button 
+          className={`config-tab ${activeTab === 'groups' ? 'active' : ''}`}
+          onClick={() => setActiveTab('groups')}
+        >
+          Groups
+        </button>
+        <button 
+          className={`config-tab ${activeTab === 'preview' ? 'active' : ''}`}
+          onClick={() => setActiveTab('preview')}
+        >
+          Preview
+        </button>
+      </div>
+      
+      <div className="config-content">
+        {activeTab === 'board' && (
+          <div className="board-structure-tab">
+            <div className="board-overview">
+              <h3>Board Overview</h3>
+              <p>A board is the main container for your work items. Configure the basic structure below.</p>
+              
+              <div className="board-stats">
+                <div className="stat-card">
+                  <h4>Columns</h4>
+                  <div className="stat-value">{editedWorkflow.columns?.length || 0}</div>
+                </div>
+                <div className="stat-card">
+                  <h4>Groups</h4>
+                  <div className="stat-value">{editedWorkflow.groups?.length || 0}</div>
+                </div>
+                <div className="stat-card">
+                  <h4>Structure Type</h4>
+                  <div className="stat-value">Standard</div>
+                </div>
+              </div>
+              
+              <div className="board-recommendations">
+                <h4>AI Recommendations</h4>
+                <ul className="recommendations-list">
+                  <li>
+                    <span className="recommendation-icon check"></span>
+                    <span className="recommendation-text">
+                      Your board includes a Status column for tracking progress
+                    </span>
+                  </li>
+                  <li>
+                    <span className="recommendation-icon check"></span>
+                    <span className="recommendation-text">
+                      You have a logical group structure for your workflow
+                    </span>
+                  </li>
+                  {!editedWorkflow.columns?.some(col => col.type === 'date' || col.title.toLowerCase().includes('date')) && (
+                    <li>
+                      <span className="recommendation-icon warning"></span>
+                      <span className="recommendation-text">
+                        Consider adding a Date column to track deadlines
+                      </span>
+                    </li>
+                  )}
+                  {!editedWorkflow.columns?.some(col => col.type === 'people' || col.title.toLowerCase().includes('owner') || col.title.toLowerCase().includes('assignee')) && (
+                    <li>
+                      <span className="recommendation-icon warning"></span>
+                      <span className="recommendation-text">
+                        Consider adding a People column to assign ownership
+                      </span>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'columns' && (
+          <div className="columns-tab">
+            <div className="columns-header">
+              <h3>Columns</h3>
+              <p>Columns define the information you'll track for each item.</p>
+              <button 
+                className="add-column-btn"
+                onClick={handleColumnAdd}
+              >
+                Add Column
+              </button>
+            </div>
+            
+            <div className="columns-list">
+              {editedWorkflow.columns?.length > 0 ? (
+                <table className="columns-table">
+                  <thead>
+                    <tr>
+                      <th>Column Name</th>
+                      <th>Type</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {editedWorkflow.columns.map((column, index) => (
+                      <tr key={index}>
+                        <td>
+                          <input
+                            type="text"
+                            value={column.title}
+                            onChange={(e) => handleColumnChange(index, 'title', e.target.value)}
+                            placeholder="Column name"
+                            className="column-name-input"
+                          />
+                        </td>
+                        <td>
+                          <select
+                            value={column.type}
+                            onChange={(e) => handleColumnChange(index, 'type', e.target.value)}
+                            className="column-type-select"
+                          >
+                            {getColumnTypeOptions().map(option => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <button 
+                            className="delete-column-btn"
+                            onClick={() => handleColumnDelete(index)}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="no-columns">
+                  <p>No columns defined yet. Click "Add Column" to create your first column.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'groups' && (
+          <div className="groups-tab">
+            <div className="groups-header">
+              <h3>Groups</h3>
+              <p>Groups organize your items into stages or categories.</p>
+              <button 
+                className="add-group-btn"
+                onClick={handleGroupAdd}
+              >
+                Add Group
+              </button>
+            </div>
+            
+            <div className="groups-list">
+              {editedWorkflow.groups?.length > 0 ? (
+                <div className="groups-container">
+                  {editedWorkflow.groups.map((group, index) => (
+                    <div 
+                      key={index}
+                      className="group-item"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <div className="drag-handle">
+                        <span className="drag-icon"></span>
+                      </div>
+                      <input
+                        type="text"
+                        value={group}
+                        onChange={(e) => handleGroupChange(index, e.target.value)}
+                        placeholder="Group name"
+                        className="group-name-input"
+                      />
+                      <button 
+                        className="delete-group-btn"
+                        onClick={() => handleGroupDelete(index)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="no-groups">
+                  <p>No groups defined yet. Click "Add Group" to create your first group.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'preview' && (
+          <div className="preview-tab">
+            <h3>Workflow Preview</h3>
+            <p>A simplified visualization of your new workspace.</p>
+            
+            <div className="preview-container">
+              <div className="board-preview">
+                <div className="preview-board-header">
+                  <h4>{editedWorkflow.board_name || 'Untitled Board'}</h4>
+                </div>
+                
+                <div className="preview-board-content">
+                  <div className="preview-columns-header">
+                    {editedWorkflow.columns?.map((column, index) => (
+                      <div key={index} className="preview-column-header">
+                        {column.title}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="preview-groups">
+                    {editedWorkflow.groups?.map((group, groupIndex) => (
+                      <div key={groupIndex} className="preview-group">
+                        <div className="preview-group-header">
+                          {group}
+                        </div>
+                        
+                        <div className="preview-items">
+                          <div className="preview-item">
+                            <div className="preview-item-title">
+                              Sample Item 1
+                            </div>
+                            <div className="preview-item-columns">
+                              {editedWorkflow.columns?.map((column, colIndex) => (
+                                <div key={colIndex} className="preview-item-cell">
+                                  {column.type === 'status' && <span className="status-indicator"></span>}
+                                  {column.type === 'people' && <span className="people-indicator"></span>}
+                                  {column.type === 'date' && <span className="date-indicator"></span>}
+                                  {(column.type !== 'status' && column.type !== 'people' && column.type !== 'date') && 
+                                    <span className="text-indicator"></span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          <div className="preview-item">
+                            <div className="preview-item-title">
+                              Sample Item 2
+                            </div>
+                            <div className="preview-item-columns">
+                              {editedWorkflow.columns?.map((column, colIndex) => (
+                                <div key={colIndex} className="preview-item-cell">
+                                  {column.type === 'status' && <span className="status-indicator"></span>}
+                                  {column.type === 'people' && <span className="people-indicator"></span>}
+                                  {column.type === 'date' && <span className="date-indicator"></span>}
+                                  {(column.type !== 'status' && column.type !== 'people' && column.type !== 'date') && 
+                                    <span className="text-indicator"></span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {error && (
+        <div className="configurator-error">
+          {error}
+        </div>
+      )}
+      
+      <div className="configurator-actions">
+        <button 
+          className="back-btn"
+          onClick={onBack}
+          disabled={isCreating}
+        >
+          Back
+        </button>
+        
+        <button 
+          className="create-workspace-btn"
+          onClick={onCreateWorkspace}
+          disabled={isCreating || !editedWorkflow.board_name?.trim()}
+        >
+          {isCreating ? 'Creating Workspace...' : 'Create Workspace'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default WorkflowConfigurator;

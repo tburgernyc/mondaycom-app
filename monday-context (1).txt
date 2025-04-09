@@ -1,0 +1,112 @@
+import React, { createContext, useState, useEffect, useCallback } from 'react';
+import { fetchBoardData, fetchWorkspaces, fetchUsers } from '../services/api/mondayApi';
+
+export const MondayContext = createContext();
+
+export const MondayProvider = ({ children, monday, context }) => {
+  const [boards, setBoards] = useState([]);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [selectedBoard, setSelectedBoard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Initialize data from Monday.com
+  useEffect(() => {
+    if (context && context.boardId) {
+      loadBoardData(context.boardId);
+    }
+    
+    loadWorkspaces();
+    loadUsers();
+  }, [context]);
+
+  // Load board data
+  const loadBoardData = useCallback(async (boardId) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const boardData = await fetchBoardData(monday, boardId);
+      setSelectedBoard(boardData);
+      
+      setLoading(false);
+    } catch (err) {
+      setError('Failed to load board data: ' + err.message);
+      setLoading(false);
+    }
+  }, [monday]);
+
+  // Load all boards
+  const loadBoards = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const query = `query { boards(limit: 100) { id name description state board_kind } }`;
+      const response = await monday.api(query);
+      
+      if (response.data && response.data.boards) {
+        setBoards(response.data.boards);
+      }
+      
+      setLoading(false);
+    } catch (err) {
+      setError('Failed to load boards: ' + err.message);
+      setLoading(false);
+    }
+  }, [monday]);
+
+  // Load workspaces
+  const loadWorkspaces = useCallback(async () => {
+    try {
+      const workspacesData = await fetchWorkspaces(monday);
+      setWorkspaces(workspacesData);
+    } catch (err) {
+      console.error('Failed to load workspaces:', err);
+    }
+  }, [monday]);
+
+  // Load users
+  const loadUsers = useCallback(async () => {
+    try {
+      const usersData = await fetchUsers(monday);
+      setUsers(usersData);
+    } catch (err) {
+      console.error('Failed to load users:', err);
+    }
+  }, [monday]);
+
+  // Execute API query
+  const executeQuery = useCallback(async (query, variables = {}) => {
+    try {
+      return await monday.api(query, { variables });
+    } catch (err) {
+      console.error('API query failed:', err);
+      throw err;
+    }
+  }, [monday]);
+
+  const value = {
+    monday,
+    context,
+    boards,
+    workspaces,
+    users,
+    selectedBoard,
+    loading,
+    error,
+    loadBoardData,
+    loadBoards,
+    loadWorkspaces,
+    loadUsers,
+    executeQuery,
+    setSelectedBoard
+  };
+
+  return (
+    <MondayContext.Provider value={value}>
+      {children}
+    </MondayContext.Provider>
+  );
+};

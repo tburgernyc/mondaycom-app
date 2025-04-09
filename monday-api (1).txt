@@ -1,0 +1,536 @@
+/**
+ * Monday.com API Integration Services
+ * 
+ * This file contains all the API functions for interacting with the Monday.com GraphQL API
+ */
+
+/**
+ * Fetch board data with items, columns, and groups
+ * @param {Object} monday - Monday SDK instance
+ * @param {String} boardId - ID of the board to fetch
+ * @returns {Promise<Object>} - Board data
+ */
+export const fetchBoardData = async (monday, boardId) => {
+  const query = `
+    query {
+      boards(ids: [${boardId}]) {
+        id
+        name
+        description
+        columns {
+          id
+          title
+          type
+          settings_str
+        }
+        groups {
+          id
+          title
+          color
+          position
+        }
+        items {
+          id
+          name
+          group {
+            id
+            title
+          }
+          column_values {
+            id
+            title
+            text
+            value
+            type
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const response = await monday.api(query);
+    
+    if (!response.data || !response.data.boards || response.data.boards.length === 0) {
+      throw new Error('Board not found');
+    }
+
+    return response.data.boards[0];
+  } catch (error) {
+    console.error('Failed to fetch board data:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetch list of workspaces
+ * @param {Object} monday - Monday SDK instance
+ * @returns {Promise<Array>} - List of workspaces
+ */
+export const fetchWorkspaces = async (monday) => {
+  const query = `
+    query {
+      workspaces {
+        id
+        name
+        kind
+        description
+      }
+    }
+  `;
+
+  try {
+    const response = await monday.api(query);
+    
+    if (!response.data || !response.data.workspaces) {
+      throw new Error('Failed to fetch workspaces');
+    }
+
+    return response.data.workspaces;
+  } catch (error) {
+    console.error('Failed to fetch workspaces:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetch list of users in the account
+ * @param {Object} monday - Monday SDK instance
+ * @returns {Promise<Array>} - List of users
+ */
+export const fetchUsers = async (monday) => {
+  const query = `
+    query {
+      users {
+        id
+        name
+        email
+        photo_thumb_small
+      }
+    }
+  `;
+
+  try {
+    const response = await monday.api(query);
+    
+    if (!response.data || !response.data.users) {
+      throw new Error('Failed to fetch users');
+    }
+
+    return response.data.users;
+  } catch (error) {
+    console.error('Failed to fetch users:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetch activity logs for a board
+ * @param {Object} monday - Monday SDK instance
+ * @param {String} boardId - ID of the board
+ * @param {Object} options - Additional options (limit, from, to)
+ * @returns {Promise<Array>} - List of activity logs
+ */
+export const fetchActivityLogs = async (monday, boardId, options = {}) => {
+  const { limit = 100, from = null, to = null } = options;
+  
+  let dateParams = '';
+  if (from) dateParams += `, from: "${from}"`;
+  if (to) dateParams += `, to: "${to}"`;
+  
+  const query = `
+    query {
+      boards(ids: [${boardId}]) {
+        activity_logs(limit: ${limit}${dateParams}) {
+          id
+          event
+          created_at
+          data
+          entity {
+            ... on Item {
+              id
+              name
+            }
+          }
+          user {
+            id
+            name
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const response = await monday.api(query);
+    
+    if (!response.data || !response.data.boards || response.data.boards.length === 0) {
+      throw new Error('Board not found');
+    }
+
+    return response.data.boards[0].activity_logs;
+  } catch (error) {
+    console.error('Failed to fetch activity logs:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create a new workspace
+ * @param {Object} monday - Monday SDK instance
+ * @param {Object} workspace - Workspace details
+ * @returns {Promise<Object>} - Created workspace data
+ */
+export const createWorkspace = async (monday, workspace) => {
+  const { name, kind = 'open', description = '' } = workspace;
+  
+  const mutation = `
+    mutation {
+      create_workspace(
+        name: "${name}",
+        kind: ${kind},
+        description: "${description}"
+      ) {
+        id
+        name
+      }
+    }
+  `;
+
+  try {
+    const response = await monday.api(mutation);
+    
+    if (!response.data || !response.data.create_workspace) {
+      throw new Error('Failed to create workspace');
+    }
+
+    return response;
+  } catch (error) {
+    console.error('Failed to create workspace:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create a new board in a workspace
+ * @param {Object} monday - Monday SDK instance
+ * @param {Object} board - Board details
+ * @returns {Promise<Object>} - Created board data
+ */
+export const createBoard = async (monday, board) => {
+  const { boardName, boardKind = 'public', workspaceId } = board;
+  
+  const mutation = `
+    mutation {
+      create_board(
+        board_name: "${boardName}",
+        board_kind: ${boardKind},
+        workspace_id: ${workspaceId}
+      ) {
+        id
+        name
+      }
+    }
+  `;
+
+  try {
+    const response = await monday.api(mutation);
+    
+    if (!response.data || !response.data.create_board) {
+      throw new Error('Failed to create board');
+    }
+
+    return response;
+  } catch (error) {
+    console.error('Failed to create board:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add columns to a board
+ * @param {Object} monday - Monday SDK instance
+ * @param {String} boardId - ID of the board
+ * @param {Array} columns - List of columns to add
+ * @returns {Promise<Array>} - List of created columns
+ */
+export const addColumnsToBoard = async (monday, boardId, columns) => {
+  try {
+    const results = [];
+    
+    // Add each column sequentially
+    for (const column of columns) {
+      const mutation = `
+        mutation {
+          create_column(
+            board_id: ${boardId},
+            title: "${column.title}",
+            column_type: ${column.type}
+          ) {
+            id
+            title
+          }
+        }
+      `;
+      
+      const response = await monday.api(mutation);
+      
+      if (response.data && response.data.create_column) {
+        results.push(response.data.create_column);
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error('Failed to add columns to board:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create groups in a board
+ * @param {Object} monday - Monday SDK instance
+ * @param {String} boardId - ID of the board
+ * @param {Array} groups - List of group names
+ * @returns {Promise<Array>} - List of created groups
+ */
+export const createGroups = async (monday, boardId, groups) => {
+  try {
+    const results = [];
+    
+    // Create each group sequentially
+    for (const groupName of groups) {
+      const mutation = `
+        mutation {
+          create_group(
+            board_id: ${boardId},
+            group_name: "${groupName}"
+          ) {
+            id
+            title
+          }
+        }
+      `;
+      
+      const response = await monday.api(mutation);
+      
+      if (response.data && response.data.create_group) {
+        results.push(response.data.create_group);
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error('Failed to create groups:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create items in a board
+ * @param {Object} monday - Monday SDK instance
+ * @param {String} boardId - ID of the board
+ * @param {String} groupId - ID of the group
+ * @param {Array} items - List of items to create
+ * @returns {Promise<Array>} - List of created items
+ */
+export const createItems = async (monday, boardId, groupId, items) => {
+  try {
+    const results = [];
+    
+    // Create each item sequentially
+    for (const item of items) {
+      const columnValues = item.columnValues ? JSON.stringify(JSON.stringify(item.columnValues)) : '{}';
+      
+      const mutation = `
+        mutation {
+          create_item(
+            board_id: ${boardId},
+            group_id: "${groupId}",
+            item_name: "${item.name}",
+            column_values: ${columnValues}
+          ) {
+            id
+            name
+          }
+        }
+      `;
+      
+      const response = await monday.api(mutation);
+      
+      if (response.data && response.data.create_item) {
+        results.push(response.data.create_item);
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error('Failed to create items:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update column values for an item
+ * @param {Object} monday - Monday SDK instance
+ * @param {String} itemId - ID of the item
+ * @param {Object} columnValues - Column values to update
+ * @returns {Promise<Object>} - Updated item data
+ */
+export const updateItemColumnValues = async (monday, itemId, columnValues) => {
+  const mutation = `
+    mutation {
+      change_multiple_column_values(
+        item_id: ${itemId},
+        board_id: ${columnValues.boardId},
+        column_values: ${JSON.stringify(JSON.stringify(columnValues.values))}
+      ) {
+        id
+        name
+      }
+    }
+  `;
+
+  try {
+    const response = await monday.api(mutation);
+    
+    if (!response.data || !response.data.change_multiple_column_values) {
+      throw new Error('Failed to update item column values');
+    }
+
+    return response;
+  } catch (error) {
+    console.error('Failed to update item column values:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create a new automation recipe
+ * @param {Object} monday - Monday SDK instance
+ * @param {String} boardId - ID of the board
+ * @param {Object} recipe - Automation recipe details
+ * @returns {Promise<Object>} - Created automation recipe data
+ */
+export const createAutomationRecipe = async (monday, boardId, recipe) => {
+  const { title, trigger, action } = recipe;
+  
+  // Note: This is a simplified implementation
+  // The actual automation creation API might differ
+  const mutation = `
+    mutation {
+      create_automation(
+        board_id: ${boardId},
+        title: "${title}",
+        trigger: "${JSON.stringify(trigger)}",
+        action: "${JSON.stringify(action)}"
+      ) {
+        id
+        title
+      }
+    }
+  `;
+
+  try {
+    const response = await monday.api(mutation);
+    
+    if (!response.data || !response.data.create_automation) {
+      throw new Error('Failed to create automation recipe');
+    }
+
+    return response;
+  } catch (error) {
+    console.error('Failed to create automation recipe:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get analysis recommendations for a board
+ * @param {Object} monday - Monday SDK instance
+ * @param {String} boardId - ID of the board
+ * @returns {Promise<Object>} - Analysis recommendations
+ */
+export const getAnalysisRecommendations = async (monday, boardId) => {
+  // Note: This is a placeholder for an actual AI analysis endpoint
+  // Monday.com might not have a direct API for this
+  // In a real implementation, this would call a custom AI service
+  
+  // For demo purposes, returning mock data
+  return {
+    bottlenecks: [
+      {
+        status: 'In Progress',
+        averageTimeHours: 48.3,
+        itemCount: 12,
+        recommendation: 'Consider breaking down tasks in this status into smaller pieces'
+      },
+      {
+        status: 'Review',
+        averageTimeHours: 36.2,
+        itemCount: 8,
+        recommendation: 'Add more reviewers to speed up this process'
+      }
+    ],
+    optimizationSuggestions: [
+      {
+        category: 'Structure',
+        title: 'Add Time Estimate Column',
+        description: 'Adding a Time Estimate column would help track expected vs. actual completion time',
+        impact: 'Medium',
+        benefits: [
+          'Better planning',
+          'Improved deadline accuracy',
+          'Data for future estimations'
+        ]
+      },
+      {
+        category: 'Automation',
+        title: 'Due Date Reminder',
+        description: 'Create an automation to notify owners when items are approaching their due date',
+        impact: 'High',
+        benefits: [
+          'Reduce missed deadlines',
+          'Improve team accountability',
+          'Proactive issue management'
+        ]
+      },
+      {
+        category: 'Workflow',
+        title: 'Reorganize Status Groups',
+        description: 'Consider rearranging your groups to follow a more logical workflow progression',
+        impact: 'Medium',
+        benefits: [
+          'Clearer process visualization',
+          'Improved team understanding',
+          'Better reporting'
+        ]
+      }
+    ],
+    teamLoadAnalysis: {
+      overallocated: [
+        'John Smith',
+        'Maria Garcia'
+      ],
+      underallocated: [
+        'David Wilson',
+        'Sarah Johnson'
+      ]
+    }
+  };
+};
+
+export default {
+  fetchBoardData,
+  fetchWorkspaces,
+  fetchUsers,
+  fetchActivityLogs,
+  createWorkspace,
+  createBoard,
+  addColumnsToBoard,
+  createGroups,
+  createItems,
+  updateItemColumnValues,
+  createAutomationRecipe,
+  getAnalysisRecommendations
+};
